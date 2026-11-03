@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#172a28" />
+    <title>Vildmark — överlev ön</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="world"></canvas>
+      <div class="vignette"></div>
+      <header>
+        <a class="brand"
+          >V<span>▲</span>LDMARK<small>ETT LIV. EN Ö. DINA REGLER.</small></a
+        >
+        <div class="day"><i></i><span id="clock">DAG 1 · 08:00</span></div>
+        <button id="helpBtn" class="subtle">HJÄLP <kbd>H</kbd></button>
+      </header>
+      <div id="hud">
+        <aside class="survival">
+          <div class="eyebrow">DITT TILLSTÅND</div>
+          <label><span>✚ Hälsa</span><b id="healthText">100</b></label>
+          <div class="meter"><i id="healthBar"></i></div>
+          <label><span>◒ Hunger</span><b id="hungerText">100</b></label>
+          <div class="meter hunger"><i id="hungerBar"></i></div>
+          <label><span>ϟ Uthållighet</span><b id="staminaText">100</b></label>
+          <div class="meter stamina"><i id="staminaBar"></i></div>
+        </aside>
+        <aside class="objectives">
+          <div class="eyebrow">EN NY BÖRJAN</div>
+          <h3>Gör ön till ditt hem.</h3>
+          <p id="quest">Samla 12 trä och 8 sten.</p>
+          <div class="questline"><i id="questProgress"></i></div>
+          <small>Natten tillhör de vilda.</small>
+        </aside>
+        <div id="crosshair">+</div>
+        <div id="target"></div>
+        <div id="notice"></div>
+        <div class="bottom">
+          <div id="inventory">
+            <span>▰ <b id="wood">0</b> TRÄ</span
+            ><span>◆ <b id="stone">0</b> STEN</span
+            ><span>● <b id="berries">0</b> BÄR</span>
+          </div>
+          <div id="hotbar"></div>
+          <div class="controls">
+            <span><kbd>W A S D</kbd> Gå</span
+            ><span><kbd>SHIFT</kbd> Spring</span
+            ><span><kbd>SPACE</kbd> Hoppa</span><span><kbd>E</kbd> Samla</span
+            ><span><kbd>B</kbd> Bygg</span><span><kbd>F</kbd> Ät</span>
+          </div>
+        </div>
+        <div class="coordinates" id="coords"></div>
+        <div class="save">◈ SPARAS AUTOMATISKT</div>
+      </div>
+      <div id="menu" class="overlay">
+        <section class="intro">
+          <div class="eyebrow">ETT LITET ÄVENTYR I EN STOR VILDMARK</div>
+          <h1>Allt börjar<br />med <em>ingenting.</em></h1>
+          <p>
+            Havet bakom dig. En okänd ö framför dig.<br />Samla, bygg och
+            överlev när mörkret faller.
+          </p>
+          <button id="play" class="primary">
+            KLIV UT I VILDMARKEN <span>↗</span>
+          </button>
+          <div class="intro-notes">
+            <span>◈ UTFORSKA FRITT</span><span>▰ BYGG DITT SKYDD</span
+            ><span>☾ ÖVERLEV NATTEN</span>
+          </div>
+          <small>Mus + tangentbord · Klicka för att fånga muspekaren</small
+          ><button id="reset" class="textbtn">Börja om på ön</button>
+        </section>
+        <div class="edition">SURVIVAL SANDBOX<br /><b>01 / ÖN</b></div>
+      </div>
+      <div id="help" class="panel hidden">
+        <h2>Din överlevnadsguide</h2>
+        <p>
+          WASD för att gå, musen för att titta. Shift springer, mellanslag
+          hoppar.
+        </p>
+        <p>
+          Sikta på träd, stenar och buskar. Tryck E för att samla. Vänsterklick
+          använder verktyget eller placerar ditt bygge.
+        </p>
+        <p>
+          1: yxa · 2: spjut · 3: vägg (4 trä) · 4: golv (3 trä) · 5: lägereld (5
+          trä + 4 sten).
+        </p>
+        <p>
+          B växlar mellan yxa och byggläge. R roterar byggdelar. F äter bär.
+          Lägereldar ger värme och återställer hälsa i närheten. Skydd och spjut
+          hjälper mot nattens vargar.
+        </p>
+        <p>
+          H stänger guiden. Esc pausar. Framsteg sparas i den här webbläsaren.
+        </p>
+        <button id="closeHelp" class="primary">Tillbaka till ön</button>
+      </div>
+      <div id="death" class="overlay hidden">
+        <section class="intro">
+          <div class="eyebrow">VILDMARKEN VANN DEN HÄR GÅNGEN</div>
+          <h1>Varje slut.<br /><em>En ny början.</em></h1>
+          <p id="deathText"></p>
+          <button id="respawn" class="primary">FÖRSÖK IGEN ↗</button>
+        </section>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
