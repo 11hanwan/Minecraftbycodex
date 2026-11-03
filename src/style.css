@@ -447,3 +447,326 @@ body:has(#menu:not(.hidden)) #hud,
 body:has(#death:not(.hidden)) #hud {
   visibility: hidden;
 }
+/* Strandad: expanded survival interface. */
+.thirst i {
+  background: #86bcca;
+}
+.compass {
+  display: inline-block;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid #d5e1c844;
+  color: #eddbaf;
+  min-width: 40px;
+}
+#hurt {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px #a52613;
+  opacity: 0;
+  z-index: 9;
+  transition: opacity 0.15s;
+}
+#minimap {
+  display: block;
+  width: 142px;
+  height: 142px;
+  margin: 18px auto 0;
+  border: 1px solid #b4c5a449;
+  border-radius: 50%;
+  opacity: 0.87;
+}
+.objectives {
+  width: 230px;
+  background: #173a3099;
+}
+.objectives h3 {
+  font-size: 16px;
+}
+#inventory {
+  gap: 22px;
+  max-width: 700px;
+  flex-wrap: wrap;
+}
+.slot.locked {
+  opacity: 0.47;
+  filter: saturate(0.2);
+}
+.slot.locked .icon {
+  font-size: 20px;
+}
+.slot {
+  width: 78px;
+}
+#buildHint {
+  position: absolute;
+  top: 61%;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  color: #f0dcad;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+#target {
+  max-width: 520px;
+  white-space: normal;
+  line-height: 1.7;
+  text-align: center;
+  background: #17352975;
+  padding: 5px 12px;
+  border-radius: 3px;
+}
+#target:empty {
+  display: none;
+}
+.menu-actions {
+  display: flex;
+  gap: 25px;
+}
+.menu-actions .textbtn {
+  padding: 15px 0;
+}
+.workshop {
+  position: absolute;
+  inset: 7vh 7vw;
+  z-index: 8;
+  background: linear-gradient(130deg, #16382cfb, #142c28fa);
+  border: 1px solid #e5cc8b66;
+  border-radius: 8px;
+  padding: 28px 32px;
+  overflow: auto;
+  box-shadow: 0 20px 100px #0008;
+  color: #f1efdc;
+}
+.workshop-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.workshop h2 {
+  font-family: Impact, "Arial Narrow", sans-serif;
+  font-weight: 400;
+  font-size: 32px;
+  letter-spacing: 0.7px;
+  margin: 8px 0 0;
+}
+.workshop-intro {
+  color: #b7caba;
+  font-size: 12px;
+  line-height: 1.7;
+}
+#bag {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 7px;
+  margin: 22px 0;
+}
+#bag > div {
+  padding: 12px 5px;
+  background: #071f1b66;
+  border: 1px solid #c5d6b51e;
+  text-align: center;
+  border-radius: 3px;
+}
+#bag b {
+  display: block;
+  font-size: 20px;
+  font-weight: 500;
+  color: #ead7aa;
+}
+#bag span {
+  display: block;
+  font-size: 10px;
+  color: #bacbb8;
+  margin-top: 5px;
+}
+#craftTabs {
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid #c5d6b52e;
+  margin: 10px 0 12px;
+}
+#craftTabs button {
+  padding: 12px 16px;
+  background: none;
+  color: #c9d7c5;
+  border: none;
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+}
+#craftTabs button.active {
+  color: #e4ca8b;
+  border-color: #e4ca8b;
+}
+#stationStatus {
+  color: #b7caba;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  min-height: 16px;
+  margin-bottom: 15px;
+}
+#recipes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 13px;
+}
+.recipe {
+  background: #153128;
+  border: 1px solid #c1d0ad28;
+  padding: 18px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 210px;
+}
+.recipe.available {
+  border-color: #dfcc8e65;
+}
+.recipe-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.recipe-heading > span {
+  font-size: 27px;
+  color: #dfcc8e;
+  width: 32px;
+  text-align: center;
+}
+.recipe h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.recipe p {
+  font-size: 11px;
+  line-height: 1.8;
+  color: #b6c8b5;
+  flex-grow: 1;
+}
+.recipe-cost {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0 15px;
+  font-size: 10px;
+}
+.enough {
+  color: #bedaa4;
+}
+.missing {
+  color: #dba586;
+}
+.recipe button {
+  background: #dfcc8e;
+  border: 0;
+  color: #24382b;
+  border-radius: 2px;
+  padding: 11px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.recipe button:disabled {
+  background: #66806a30;
+  color: #94aa93;
+  cursor: default;
+  filter: none;
+}
+#storage {
+  width: min(650px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+}
+.storage-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+  align-items: center;
+  font-size: 11px;
+}
+.storage-row button {
+  padding: 10px;
+  background: #d7c493;
+  color: #1c3529;
+  border: 0;
+  border-radius: 2px;
+  font-size: 11px;
+}
+.storage-row button:disabled {
+  background: #ffffff12;
+  color: #8ea78f;
+  cursor: default;
+}
+#storage > .primary {
+  margin-top: 18px;
+}
+body:has(.workshop:not(.hidden)) #hud,
+body:has(#storage:not(.hidden)) #hud,
+body:has(#help:not(.hidden)) #hud {
+  visibility: hidden;
+}
+@media (max-height: 780px) {
+  .intro {
+    padding-top: 30px;
+  }
+  .intro h1 {
+    font-size: 70px;
+    margin: 25px 0;
+  }
+  .intro p {
+    font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .intro-notes {
+    margin: 24px 0 18px;
+  }
+  .objectives {
+    top: 120px;
+    padding: 16px;
+  }
+  .survival {
+    top: 120px;
+  }
+  .objectives #minimap {
+    width: 116px;
+    height: 116px;
+    margin-top: 12px;
+  }
+  .survival label {
+    margin-top: 15px;
+  }
+  .workshop {
+    inset: 4vh 5vw;
+  }
+  .workshop h2 {
+    font-size: 28px;
+  }
+}
+@media (max-width: 900px) {
+  #recipes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  #bag {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .objectives {
+    width: 190px;
+  }
+  .workshop {
+    inset: 4vh 3vw;
+    padding: 20px;
+  }
+  .slot {
+    width: 65px;
+  }
+  .controls {
+    font-size: 7px;
+  }
+  .survival {
+    width: 140px;
+  }
+}

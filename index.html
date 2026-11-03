@@ -4,17 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#172a28" />
-    <title>Vildmark — överlev ön</title>
+    <title>Vildmark — Strandad</title>
   </head>
   <body>
     <div id="app">
       <canvas id="world"></canvas>
       <div class="vignette"></div>
+      <div id="hurt"></div>
       <header>
-        <a class="brand"
-          >V<span>▲</span>LDMARK<small>ETT LIV. EN Ö. DINA REGLER.</small></a
-        >
-        <div class="day"><i></i><span id="clock">DAG 1 · 08:00</span></div>
+        <div class="brand">
+          V<span>▲</span>LDMARK<small>STRANDAD · SURVIVAL</small>
+        </div>
+        <div class="day">
+          <i></i><span id="clock">DAG 1</span
+          ><span class="compass" id="compass">N</span>
+        </div>
         <button id="helpBtn" class="subtle">HJÄLP <kbd>H</kbd></button>
       </header>
       <div id="hud">
@@ -24,80 +28,125 @@
           <div class="meter"><i id="healthBar"></i></div>
           <label><span>◒ Hunger</span><b id="hungerText">100</b></label>
           <div class="meter hunger"><i id="hungerBar"></i></div>
+          <label><span>◈ Törst</span><b id="thirstText">100</b></label>
+          <div class="meter thirst"><i id="thirstBar"></i></div>
           <label><span>ϟ Uthållighet</span><b id="staminaText">100</b></label>
           <div class="meter stamina"><i id="staminaBar"></i></div>
         </aside>
         <aside class="objectives">
-          <div class="eyebrow">EN NY BÖRJAN</div>
-          <h3>Gör ön till ditt hem.</h3>
-          <p id="quest">Samla 12 trä och 8 sten.</p>
+          <div class="eyebrow" id="questStep">FRÅN INGENTING</div>
+          <h3 id="questTitle">Dina första verktyg.</h3>
+          <p id="quest">
+            Plocka grenar, småsten och fiber. Tillverka en stenyxa [C].
+          </p>
           <div class="questline"><i id="questProgress"></i></div>
-          <small>Natten tillhör de vilda.</small>
+          <small id="biome">Södra stranden</small
+          ><canvas id="minimap" width="150" height="150"></canvas>
         </aside>
         <div id="crosshair">+</div>
         <div id="target"></div>
-        <div id="notice"></div>
+        <div id="notice" role="status"></div>
+        <div id="buildHint" class="hidden">
+          R ROTERA · KLICK BYGG · 1 AVBRYT
+        </div>
         <div class="bottom">
-          <div id="inventory">
-            <span>▰ <b id="wood">0</b> TRÄ</span
-            ><span>◆ <b id="stone">0</b> STEN</span
-            ><span>● <b id="berries">0</b> BÄR</span>
-          </div>
+          <div id="inventory"></div>
           <div id="hotbar"></div>
           <div class="controls">
             <span><kbd>W A S D</kbd> Gå</span
             ><span><kbd>SHIFT</kbd> Spring</span
-            ><span><kbd>SPACE</kbd> Hoppa</span><span><kbd>E</kbd> Samla</span
-            ><span><kbd>B</kbd> Bygg</span><span><kbd>F</kbd> Ät</span>
+            ><span><kbd>E</kbd> Interagera</span
+            ><span><kbd>C</kbd> Tillverka</span><span><kbd>F</kbd> Ät</span
+            ><span><kbd>SPACE</kbd> Hoppa</span>
           </div>
         </div>
         <div class="coordinates" id="coords"></div>
-        <div class="save">◈ SPARAS AUTOMATISKT</div>
+        <div class="save" id="saveStatus">◈ SPARAS LOKALT</div>
       </div>
       <div id="menu" class="overlay">
         <section class="intro">
-          <div class="eyebrow">ETT LITET ÄVENTYR I EN STOR VILDMARK</div>
-          <h1>Allt börjar<br />med <em>ingenting.</em></h1>
+          <div class="eyebrow">INGA VERKTYG. INGET SKYDD. BARA DU.</div>
+          <h1>Vildmarken<br />ger <em>ingenting.</em></h1>
           <p>
-            Havet bakom dig. En okänd ö framför dig.<br />Samla, bygg och
-            överlev när mörkret faller.
+            En strand. En skog. Ett liv att försvara.<br />Plocka det du hittar.
+            Tillverka det du behöver.<br />Bygg en plats som är din innan natten
+            kommer.
           </p>
           <button id="play" class="primary">
-            KLIV UT I VILDMARKEN <span>↗</span>
+            BÖRJA TOMHÄNT <span>↗</span>
           </button>
           <div class="intro-notes">
-            <span>◈ UTFORSKA FRITT</span><span>▰ BYGG DITT SKYDD</span
-            ><span>☾ ÖVERLEV NATTEN</span>
+            <span>◈ SAMLA & TILLVERKA</span><span>⌂ BYGG ETT HEM</span
+            ><span>☾ JAGA & ÖVERLEV</span>
           </div>
-          <small>Mus + tangentbord · Klicka för att fånga muspekaren</small
-          ><button id="reset" class="textbtn">Börja om på ön</button>
+          <small>Mus + tangentbord · Esc pausar · C öppnar tillverkning</small>
+          <div class="menu-actions">
+            <button id="reset" class="textbtn">Börja en ny överlevnad</button
+            ><button id="quality" class="textbtn">Grafik: balanserad</button>
+          </div>
         </section>
-        <div class="edition">SURVIVAL SANDBOX<br /><b>01 / ÖN</b></div>
+        <div class="edition">ETT VILDARE LIV<br /><b>02 / STRANDAD</b></div>
       </div>
-      <div id="help" class="panel hidden">
-        <h2>Din överlevnadsguide</h2>
+      <section id="crafting" class="workshop hidden" aria-label="Tillverkning">
+        <div class="workshop-top">
+          <div>
+            <div class="eyebrow">FRÅN DINA EGNA HÄNDER</div>
+            <h2>Packning & tillverkning</h2>
+          </div>
+          <button id="closeCraft" class="subtle">TILLBAKA <kbd>C</kbd></button>
+        </div>
+        <p class="workshop-intro">
+          Samla material. Tillverka verktyg. Välj en byggdel och placera den i
+          världen.
+        </p>
+        <div id="bag"></div>
+        <nav id="craftTabs">
+          <button data-tab="tools" class="active">Verktyg</button
+          ><button data-tab="build">Läger & byggande</button
+          ><button data-tab="food">Mat & smältning</button>
+        </nav>
+        <div id="stationStatus"></div>
+        <div id="recipes"></div>
+      </section>
+      <section id="storage" class="panel hidden">
+        <div class="eyebrow">DITT LÄGER</div>
+        <h2>Förvaringskista</h2>
+        <p>Klicka för att flytta hela mängden mellan packning och kista.</p>
+        <div id="storageRows"></div>
+        <button id="closeStorage" class="primary">Tillbaka</button>
+      </section>
+      <section id="help" class="panel hidden">
+        <div class="eyebrow">LÄR KÄNNA ÖN</div>
+        <h2>Från tomma händer till ett hem.</h2>
         <p>
-          WASD för att gå, musen för att titta. Shift springer, mellanslag
-          hoppar.
+          <b>Börja på marken:</b> grenar, småsten, fiber och bär kan plockas med
+          E. Du har inga verktyg från början. Träd kan bearbetas för hand, men
+          en yxa ger mer trä.
         </p>
         <p>
-          Sikta på träd, stenar och buskar. Tryck E för att samla. Vänsterklick
-          använder verktyget eller placerar ditt bygge.
+          <b>C — tillverka:</b> gör en yxa, en hacka och ett spjut. Stora stenar
+          och järnmalm kräver hacka. Välj en byggdel i menyn och klicka på
+          marken för att bygga; R roterar. Material dras först när bygget
+          placeras.
         </p>
         <p>
-          1: yxa · 2: spjut · 3: vägg (4 trä) · 4: golv (3 trä) · 5: lägereld (5
-          trä + 4 sten).
+          <b>Överlev:</b> F äter mat. Drick sötvatten med E vid källan väster om
+          stranden. Jaga hjortar med spjutet och stek köttet vid en lägereld.
+          Eldar skrämmer vargar och återställer hälsa.
         </p>
         <p>
-          B växlar mellan yxa och byggläge. R roterar byggdelar. F äter bär.
-          Lägereldar ger värme och återställer hälsa i närheten. Skydd och spjut
-          hjälper mot nattens vargar.
+          <b>Utveckla lägret:</b> arbetsbänken låser upp smältugnen och
+          järnyxan. Bränn träkol vid elden och smält malm med kolet i ugnen.
+          Förvara resurser i kistor. Sov till morgonen på en sovplats om inga
+          vargar är nära.
         </p>
         <p>
-          H stänger guiden. Esc pausar. Framsteg sparas i den här webbläsaren.
+          WASD går · musen tittar · Shift springer · mellanslag hoppar · 1–5
+          byter verktyg · E interagerar · C tillverkar · M växlar karta · Esc
+          pausar. Framsteg sparas i den här webbläsaren.
         </p>
         <button id="closeHelp" class="primary">Tillbaka till ön</button>
-      </div>
+      </section>
       <div id="death" class="overlay hidden">
         <section class="intro">
           <div class="eyebrow">VILDMARKEN VANN DEN HÄR GÅNGEN</div>

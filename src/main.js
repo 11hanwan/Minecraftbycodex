@@ -1,489 +1,676 @@
 import * as THREE from "three";
 import "./style.css";
+import { heightAt, seededRandom, WORLD_RADIUS } from "./survival.js";
 import {
-  heightAt,
-  seededRandom,
-  craft,
-  canCraft,
-  recipes,
-} from "./survival.js";
+  items,
+  resourceNames,
+  emptyInventory,
+  craftStatus,
+  makeItem,
+  gatherRule,
+} from "./progression.js";
+import { createWorld } from "./world.js";
 const $ = (id) => document.getElementById(id),
-  rand = seededRandom();
+  SAVE_KEY = "vildmark-strandad-v2",
+  rand = seededRandom(981);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#9bc5bf");
-scene.fog = new THREE.FogExp2("#9bc5bf", 0.012);
+scene.background = new THREE.Color("#b9cec4");
+scene.fog = new THREE.FogExp2("#b9cec4", 0.0065);
 const camera = new THREE.PerspectiveCamera(
   72,
   innerWidth / innerHeight,
-  0.08,
-  180,
+  0.06,
+  330,
 );
 camera.rotation.order = "YXZ";
 const renderer = new THREE.WebGLRenderer({
   canvas: $("world"),
   antialias: true,
+  powerPreference: "high-performance",
 });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.35));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-const hemi = new THREE.HemisphereLight("#e0efe0", "#526b43", 2.5);
+renderer.toneMappingExposure = 1.12;
+const hemi = new THREE.HemisphereLight("#e9f4e9", "#657047", 2);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight("#ffe6b3", 3);
-sun.position.set(25, 45, -25);
+const sun = new THREE.DirectionalLight("#ffdfac", 2.8);
+sun.position.set(35, 55, -30);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, {
-  left: -55,
-  right: 55,
-  top: 55,
-  bottom: -55,
+  left: -60,
+  right: 60,
+  top: 60,
+  bottom: -60,
   near: 1,
-  far: 130,
+  far: 180,
 });
-sun.shadow.bias = -0.001;
+sun.shadow.normalBias = 0.04;
+sun.shadow.bias = -0.0004;
 scene.add(sun);
 scene.add(sun.target);
-const mat = (color, extra = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness: 1, ...extra });
-const materials = {
-  grass: mat("#839867"),
-  sand: mat("#cbbd8b"),
-  dirt: mat("#8d7954"),
-  bark: mat("#72553a"),
-  leaf: mat("#526f45"),
-  leaf2: mat("#6c8752"),
-  rock: mat("#929b8d"),
-  wood: mat("#9e7e51"),
-  berry: mat("#b96242"),
-};
-function mesh(geo, material, x = 0, y = 0, z = 0, parent = scene) {
-  const m = new THREE.Mesh(geo, material);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  parent.add(m);
-  return m;
-}
-const box = new THREE.BoxGeometry(1, 1, 1),
-  resources = [],
+const world = createWorld(scene),
+  { mesh, mats, resources } = world,
   buildings = [],
-  wolves = [];
-// Instanced terrain gives the island a carved, block-built silhouette.
-const terrainData = [];
-for (let x = -48; x <= 48; x += 2)
-  for (let z = -48; z <= 48; z += 2) {
-    const h = heightAt(x, z);
-    if (h > -3) terrainData.push({ x, z, h });
-  }
-const terrain = new THREE.InstancedMesh(
-    box,
-    materials.grass,
-    terrainData.length,
-  ),
-  dummy = new THREE.Object3D(),
-  color = new THREE.Color();
-terrainData.forEach(({ x, z, h }, i) => {
-  dummy.position.set(x, (h - 5) / 2, z);
-  dummy.scale.set(2, h + 5, 2);
-  dummy.updateMatrix();
-  terrain.setMatrixAt(i, dummy.matrix);
-  color.set(h < 1 ? "#c8bc8e" : i % 4 === 0 ? "#8f9e6e" : "#7e9161");
-  terrain.setColorAt(i, color);
-});
-terrain.receiveShadow = true;
-terrain.castShadow = true;
-scene.add(terrain);
-const water = mesh(
-  new THREE.PlaneGeometry(700, 700, 1, 1),
-  mat("#609e9b", {
-    transparent: true,
-    opacity: 0.79,
-    metalness: 0.25,
-    roughness: 0.3,
-  }),
-  0,
-  -0.45,
-  0,
-);
-water.rotation.x = -Math.PI / 2;
-water.castShadow = false;
-const resourceGeo = {
-  trunk: new THREE.CylinderGeometry(0.28, 0.46, 3.8, 6),
-  leaf: new THREE.ConeGeometry(2.5, 4.5, 6),
-  rock: new THREE.DodecahedronGeometry(1.1, 0),
-  bush: new THREE.IcosahedronGeometry(0.9, 0),
+  animals = [];
+const state = {
+  health: 100,
+  hunger: 100,
+  thirst: 100,
+  stamina: 100,
+  time: 0.32,
+  day: 1,
+  elapsed: 0,
+  inventory: emptyInventory(),
+  tools: [],
+  kills: 0,
 };
-for (let i = 0; i < 160; i++) {
-  const x = (rand() - 0.5) * 83,
-    z = (rand() - 0.5) * 83,
-    y = heightAt(x, z);
-  if (y < 1 || Math.hypot(x - 3, z - 9) < 5) continue;
-  const type = i % 5 === 0 ? "stone" : i % 7 === 0 ? "berries" : "wood",
-    group = new THREE.Group();
-  group.position.set(x, y, z);
-  scene.add(group);
-  if (type === "wood") {
-    mesh(resourceGeo.trunk, materials.bark, 0, 1.8, 0, group);
-    const a = mesh(
-      resourceGeo.leaf,
-      i % 2 ? materials.leaf : materials.leaf2,
-      0,
-      4.4,
-      0,
-      group,
-    );
-    a.rotation.y = rand() * 6;
-    mesh(
-      new THREE.ConeGeometry(1.8, 3.8, 6),
-      materials.leaf2,
-      0,
-      6.3,
-      0,
-      group,
-    );
-  }
-  if (type === "stone") {
-    const m = mesh(resourceGeo.rock, materials.rock, 0, 0.65, 0, group);
-    m.scale.set(1.3, 0.9, 1);
-    m.rotation.set(rand(), rand(), rand());
-  }
-  if (type === "berries") {
-    mesh(resourceGeo.bush, materials.leaf2, 0, 0.55, 0, group);
-    for (let j = 0; j < 6; j++)
-      mesh(
-        new THREE.IcosahedronGeometry(0.13),
-        materials.berry,
-        (rand() - 0.5) * 1.1,
-        0.65 + rand() * 0.5,
-        (rand() - 0.5) * 1.1,
-        group,
-      );
-  }
-  const r = { id: i, type, group, hp: type === "wood" ? 3 : 2, alive: true };
-  group.traverse((o) => {
-    if (o.isMesh) o.userData.resource = r;
-  });
-  resources.push(r);
-}
-// Tufts, shore pebbles and faraway clouds.
-const grassTufts = [];
-for (let i = 0; i < 600; i++) {
-  const x = (rand() - 0.5) * 86,
-    z = (rand() - 0.5) * 86,
-    y = heightAt(x, z);
-  if (y < 1) continue;
-  grassTufts.push({ x, y, z, tilt: (rand() - 0.5) * 0.5 });
-}
-const grass = new THREE.InstancedMesh(
-  new THREE.ConeGeometry(0.12, 0.5, 3),
-  materials.grass,
-  grassTufts.length,
-);
-grassTufts.forEach((p, i) => {
-  dummy.position.set(p.x, p.y + 0.2, p.z);
-  dummy.scale.set(1, 1, 1);
-  dummy.rotation.set(0, 0, p.tilt);
-  dummy.updateMatrix();
-  grass.setMatrixAt(i, dummy.matrix);
-  grass.setColorAt(i, new THREE.Color(i % 2 ? "#a2ac78" : "#677e51"));
-});
-grass.receiveShadow = true;
-scene.add(grass);
-const cloudMat = mat("#f0eee0");
-for (let i = 0; i < 22; i++) {
-  const c = mesh(
-    new THREE.IcosahedronGeometry(1, 0),
-    cloudMat,
-    (rand() - 0.5) * 230,
-    32 + rand() * 15,
-    (rand() - 0.5) * 230,
-  );
-  c.scale.set(9 + rand() * 12, 1.5 + rand() * 2, 4 + rand() * 6);
-  c.castShadow = false;
-}
-let state = {
-    health: 100,
-    hunger: 100,
-    stamina: 100,
-    wood: 0,
-    stone: 0,
-    berries: 0,
-    time: 0.28,
-    day: 1,
-  },
-  selected = 0,
-  rotation = 0,
-  dead = false,
-  played = false,
-  questDone = false;
 const player = {
-  position: new THREE.Vector3(3, heightAt(3, 9) + 1.7, 9),
-  vy: 0,
-  grounded: true,
+  position: new THREE.Vector3(3, heightAt(3, 17) + 1.7, 17),
   yaw: 0,
   pitch: 0,
+  vy: 0,
+  grounded: true,
 };
-const slots = [
-  { name: "YXA", icon: "🪓", type: "axe" },
-  { name: "SPJUT", icon: "↟", type: "spear" },
-  { name: "VÄGG", icon: "▥", type: "wall", cost: "4 TRÄ" },
-  { name: "GOLV", icon: "▱", type: "floor", cost: "3 TRÄ" },
-  { name: "LÄGERELD", icon: "♨", type: "fire", cost: "5 TRÄ · 4 STEN" },
-];
-$("hotbar").innerHTML = slots
-  .map(
-    (s, i) =>
-      `<div class="slot ${i === 0 ? "active" : ""}"><span class="number">${i + 1}</span><span class="icon">${s.icon}</span><span class="name">${s.name}</span><span class="cost">${s.cost || "VERKTYG"}</span></div>`,
-  )
-  .join("");
-const hand = new THREE.Group();
-camera.add(hand);
-scene.add(camera);
-const handle = mesh(
-  new THREE.CylinderGeometry(0.035, 0.045, 0.75, 6),
-  materials.bark,
-  0.34,
-  -0.36,
-  -0.5,
-  hand,
-);
-handle.rotation.z = -0.35;
-const blade = mesh(
-  new THREE.BoxGeometry(0.28, 0.23, 0.08),
-  materials.rock,
-  0.23,
-  -0.03,
-  -0.5,
-  hand,
-);
-const spear = mesh(
-  new THREE.ConeGeometry(0.065, 0.35, 5),
-  materials.rock,
-  0.23,
-  0.06,
-  -0.5,
-  hand,
-);
-spear.visible = false;
+let selected = "hands",
+  blueprint = null,
+  rotation = 0,
+  target = null,
+  buildPoint = null,
+  played = false,
+  dead = false,
+  resetting = false,
+  panel = null,
+  tab = "tools",
+  openChest = null,
+  hitUntil = 0,
+  swing = 0,
+  saveTimer = 0,
+  animalTimer = 0,
+  shadowTimer = 0,
+  mapTimer = 0,
+  hurtUntil = 0,
+  lowGraphics = false;
+const keys = new Set(),
+  ray = new THREE.Raycaster(),
+  look = new THREE.Vector3(),
+  box = new THREE.BoxGeometry(1, 1, 1);
 const ghost = mesh(
   box,
   new THREE.MeshBasicMaterial({
     color: "#d6e4ab",
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.32,
     wireframe: true,
   }),
 );
 ghost.visible = false;
-let buildPoint = null,
-  target = null,
-  noticeTimeout,
-  hitCooldown = 0,
-  swing = 0,
-  saveTimer = 0,
-  enemyTimer = 0;
-function notice(t) {
-  $("notice").textContent = t;
-  clearTimeout(noticeTimeout);
-  noticeTimeout = setTimeout(() => ($("notice").textContent = ""), 2500);
+ghost.castShadow = false;
+const hand = new THREE.Group();
+camera.add(hand);
+scene.add(camera);
+function handModel() {
+  hand.traverse((object) => {
+    if (object.isMesh) {
+      object.geometry.dispose();
+      object.material.dispose();
+    }
+  });
+  hand.clear();
+  const skin = mats.skin;
+  const bare = selected === "hands";
+  if (bare) {
+    const arm = mesh(
+      new THREE.CylinderGeometry(0.08, 0.11, 0.46, 8),
+      skin,
+      0.31,
+      -0.37,
+      -0.38,
+      hand,
+    );
+    arm.rotation.x = -0.7;
+    mesh(new THREE.SphereGeometry(0.105, 8, 6), skin, 0.31, -0.19, -0.52, hand);
+  } else if (["axe", "ironAxe", "pickaxe", "spear"].includes(selected)) {
+    const handle = mesh(
+      new THREE.CylinderGeometry(
+        0.027,
+        0.041,
+        selected === "spear" ? 1.2 : 0.7,
+        7,
+      ),
+      mats.bark,
+      0.3,
+      -0.32,
+      -0.5,
+      hand,
+    );
+    handle.rotation.z = -0.24;
+    mesh(new THREE.SphereGeometry(0.08, 8, 6), skin, 0.33, -0.37, -0.48, hand);
+    if (selected === "spear")
+      mesh(
+        new THREE.ConeGeometry(0.065, 0.3, 6),
+        mats.rock,
+        0.16,
+        0.39,
+        -0.5,
+        hand,
+      );
+    else if (selected === "pickaxe") {
+      const head = mesh(
+        new THREE.ConeGeometry(0.09, 0.5, 5),
+        mats.rock,
+        0.18,
+        0,
+        -0.5,
+        hand,
+      );
+      head.rotation.z = Math.PI / 2;
+    } else {
+      const head = mesh(
+        new THREE.DodecahedronGeometry(0.16, 0),
+        selected === "ironAxe"
+          ? new THREE.MeshStandardMaterial({
+              color: "#aab6b3",
+              metalness: 0.8,
+              roughness: 0.3,
+            })
+          : mats.rock,
+        0.16,
+        0,
+        -0.5,
+        hand,
+      );
+      head.scale.set(1.3, 1, 0.4);
+    }
+  }
+  hand.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = false;
+      o.material = o.material.clone();
+      o.material.depthTest = false;
+      o.renderOrder = 20;
+    }
+  });
 }
-function select(n) {
-  selected = n;
+const hotItems = [
+  ["hands", "HÄNDER", "✋"],
+  ["axe", "YXA", "🪓"],
+  ["pickaxe", "HACKA", "⛏"],
+  ["spear", "SPJUT", "↟"],
+  ["ironAxe", "JÄRNYXA", "⚒"],
+];
+function renderHotbar() {
+  $("hotbar").innerHTML = hotItems
+    .map(
+      ([id, name, icon], i) =>
+        `<div class="slot ${selected === id ? "active" : ""} ${id !== "hands" && !state.tools.includes(id) ? "locked" : ""}"><span class="number">${i + 1}</span><span class="icon">${icon}</span><span class="name">${name}</span><span class="cost">${id === "hands" ? "TOMHÄNT" : state.tools.includes(id) ? "TILLVERKAD" : "LÅST · C"}</span></div>`,
+    )
+    .join("");
+}
+function select(id) {
+  if (id !== "hands" && !state.tools.includes(id)) {
+    notice("Tillverka verktyget först [C].");
+    return;
+  }
+  selected = id;
+  blueprint = null;
+  $("buildHint").classList.add("hidden");
+  hand.visible = true;
+  handModel();
+  renderHotbar();
+}
+function notice(text) {
+  $("notice").textContent = text;
+  clearTimeout(notice.timer);
+  notice.timer = setTimeout(() => ($("notice").textContent = ""), 3600);
+}
+function active() {
+  return document.pointerLockElement === renderer.domElement && !dead && !panel;
+}
+function lock() {
+  if (dead) return;
+  renderer.domElement
+    .requestPointerLock()
+    ?.catch(() => notice("Klicka på Fortsätt för att fånga muspekaren."));
+}
+function closePanels(resume = true) {
+  for (const id of ["crafting", "help", "storage"])
+    $(id).classList.add("hidden");
+  panel = null;
+  openChest = null;
+  if (resume) lock();
+  else $("menu").classList.remove("hidden");
+}
+function openPanel(id) {
+  if (dead) return;
+  closePanels(false);
+  panel = id;
+  $(id).classList.remove("hidden");
+  $("menu").classList.add("hidden");
+  keys.clear();
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (id === "crafting") renderCrafting();
+}
+function nearbyStations() {
+  return [
+    ...new Set(
+      buildings
+        .filter((b) => b.group.position.distanceTo(player.position) < 7)
+        .map((b) => b.type),
+    ),
+  ];
+}
+function costLabel(cost) {
+  return Object.entries(cost)
+    .map(([key, n]) => `${n} ${resourceNames[key]}`)
+    .join(" · ");
+}
+function renderCrafting() {
+  const inv = state.inventory,
+    stations = nearbyStations();
+  $("bag").innerHTML = Object.entries(resourceNames)
+    .map(([id, name]) => `<div><b>${inv[id]}</b><span>${name}</span></div>`)
+    .join("");
+  $("stationStatus").textContent = stations.length
+    ? "Nära: " +
+      [...new Set(stations)]
+        .map((id) => items[id]?.name)
+        .filter(Boolean)
+        .join(" · ")
+    : "Handtillverkning — placera stationer för att låsa upp fler recept.";
   document
-    .querySelectorAll(".slot")
-    .forEach((e, i) => e.classList.toggle("active", i === n));
-  blade.visible = n === 0;
-  spear.visible = n === 1;
-  hand.visible = n < 2;
+    .querySelectorAll("#craftTabs button")
+    .forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  $("recipes").innerHTML = Object.entries(items)
+    .filter(([, item]) =>
+      tab === "tools"
+        ? item.tool
+        : tab === "build"
+          ? item.build
+          : !!item.output,
+    )
+    .map(([id, item]) => {
+      const status = craftStatus(inv, state.tools, id, stations);
+      return `<article class="recipe ${status.ok ? "available" : ""}"><div class="recipe-heading"><span>${item.icon}</span><h3>${item.name}</h3></div><p>${item.description}</p><div class="recipe-cost">${Object.entries(
+        item.cost,
+      )
+        .map(
+          ([key, n]) =>
+            `<span class="${inv[key] >= n ? "enough" : "missing"}">${inv[key]}/${n} ${resourceNames[key]}</span>`,
+        )
+        .join(
+          "",
+        )}</div><button data-recipe="${id}" ${status.ok ? "" : "disabled"}>${status.ok ? (item.build ? "Välj bygge" : "Tillverka") : status.reason}</button></article>`;
+    })
+    .join("");
 }
-function addBuilding(type, x, y, z, rot = 0) {
+function chooseRecipe(id) {
+  const item = items[id],
+    status = craftStatus(state.inventory, state.tools, id, nearbyStations());
+  if (!status.ok) {
+    notice(status.reason);
+    return;
+  }
+  if (item.build) {
+    blueprint = id;
+    hand.visible = false;
+    renderHotbar();
+    $("buildHint").classList.remove("hidden");
+    closePanels();
+    notice(`${item.name} · ${costLabel(item.cost)} · R roterar`);
+  } else {
+    makeItem(state.inventory, state.tools, id, nearbyStations());
+    notice(`${item.name} tillverkad.`);
+    if (item.tool) {
+      select(id);
+    }
+    renderCrafting();
+    save();
+  }
+}
+$("recipes").onclick = (e) => {
+  const button = e.target.closest("[data-recipe]");
+  if (button && !button.disabled) chooseRecipe(button.dataset.recipe);
+};
+$("craftTabs").onclick = (e) => {
+  if (e.target.dataset.tab) {
+    tab = e.target.dataset.tab;
+    renderCrafting();
+  }
+};
+function addBuilding(type, x, y, z, rot = 0, extra = {}) {
   const group = new THREE.Group();
   group.position.set(x, y, z);
   group.rotation.y = rot;
   scene.add(group);
-  if (type === "wall") {
-    for (let i = 0; i < 6; i++)
-      mesh(
-        new THREE.BoxGeometry(0.32, 2.8, 0.3),
-        materials.wood,
-        -0.85 + i * 0.34,
-        1.4,
+  const board = (w, h, d, px, py, pz, mat = mats.wood) =>
+    mesh(new THREE.BoxGeometry(w, h, d), mat, px, py, pz, group);
+  if (type === "wall" || type === "door") {
+    for (const sx of [-0.98, 0.98]) {
+      const post = mesh(
+        new THREE.CylinderGeometry(0.09, 0.13, 2.6, 7),
+        mats.bark,
+        sx,
+        1.3,
         0,
         group,
       );
-    for (let h of [0.45, 2.3])
+    }
+    if (type === "wall") {
+      for (let i = 0; i < 7; i++)
+        board(0.28, 2.5, 0.13, -0.87 + i * 0.29, 1.3, 0);
+      for (const h of [0.3, 2.2]) board(2.2, 0.1, 0.18, 0, h, 0.07);
+    } else {
+      board(2.1, 0.15, 0.23, 0, 2.58, 0);
+      const door = new THREE.Group();
+      door.position.set(-0.88, 0.05, 0);
+      group.add(door);
+      for (let i = 0; i < 6; i++) {
+        const plank = mesh(
+          new THREE.BoxGeometry(0.29, 2.3, 0.12),
+          mats.wood,
+          i * 0.29,
+          1.2,
+          0,
+          door,
+        );
+      }
       mesh(
-        new THREE.BoxGeometry(2.2, 0.14, 0.4),
-        materials.bark,
-        0,
-        h,
-        0,
-        group,
-      );
-  } else if (type === "floor") {
-    for (let i = 0; i < 6; i++)
-      mesh(
-        new THREE.BoxGeometry(0.32, 0.16, 2),
-        materials.wood,
-        -0.85 + i * 0.34,
+        new THREE.SphereGeometry(0.06, 7, 5),
+        mats.rock,
+        1.5,
+        1.2,
         0.12,
-        0,
-        group,
+        door,
       );
-  } else {
-    for (let i = 0; i < 7; i++) {
-      let a = (i / 7) * Math.PI * 2;
+      group.userData.door = door;
+    }
+  }
+  if (type === "floor") {
+    for (let i = 0; i < 8; i++) board(0.25, 0.18, 2, -0.88 + i * 0.25, 0.13, 0);
+    for (const sx of [-0.8, 0.8]) board(0.15, 0.3, 2, sx, -0.05, 0, mats.bark);
+  }
+  if (type === "roof") {
+    for (const sign of [-1, 1]) {
+      const r = board(1.4, 0.18, 2.3, sign * 0.5, 2.75, 0, mats.fiber);
+      r.rotation.z = sign * -0.48;
+    }
+  }
+  if (type === "fire") {
+    for (let i = 0; i < 10; i++) {
+      const a = (i * Math.PI) / 5;
       mesh(
-        new THREE.DodecahedronGeometry(0.2),
-        materials.rock,
+        new THREE.DodecahedronGeometry(0.18, 0),
+        mats.rock,
         Math.cos(a) * 0.6,
-        0.15,
+        0.13,
         Math.sin(a) * 0.6,
         group,
       );
     }
     for (let i = 0; i < 3; i++) {
       const log = mesh(
-        new THREE.CylinderGeometry(0.11, 0.11, 1.1, 5),
-        materials.bark,
+        new THREE.CylinderGeometry(0.08, 0.12, 1.1, 7),
+        mats.bark,
         0,
-        0.2,
+        0.18,
         0,
         group,
       );
       log.rotation.set(Math.PI / 2, 0, i * 1.1);
     }
-    const flame = mesh(
-      new THREE.ConeGeometry(0.29, 0.9, 5),
-      new THREE.MeshBasicMaterial({ color: "#ffc86b" }),
+    const flames = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const f = mesh(
+        new THREE.ConeGeometry(0.22 - i * 0.045, 0.8 - i * 0.1, 6),
+        new THREE.MeshBasicMaterial({
+          color: i === 0 ? "#f79f3a" : "#ffe29c",
+          transparent: true,
+          opacity: 0.85,
+        }),
+        Math.sin(i * 2) * 0.12,
+        0.55 + i * 0.1,
+        0,
+        flames,
+      );
+      f.castShadow = false;
+    }
+    group.add(flames);
+    group.userData.flame = flames;
+    const light = new THREE.PointLight("#ffb861", 9, 12, 2);
+    light.position.y = 1;
+    group.add(light);
+    group.userData.light = light;
+    const smoke = mesh(
+      new THREE.IcosahedronGeometry(0.22, 0),
+      new THREE.MeshBasicMaterial({
+        color: "#c2c2b8",
+        transparent: true,
+        opacity: 0.25,
+      }),
       0,
-      0.65,
+      1.8,
       0,
       group,
     );
-    const light = new THREE.PointLight("#ffb75e", 8, 12, 2);
-    light.position.y = 1;
-    group.add(light);
-    group.userData.flame = flame;
-    group.userData.light = light;
+    smoke.castShadow = false;
+    group.userData.smoke = smoke;
   }
-  const b = { type, x, y, z, rot, group };
+  if (type === "bench") {
+    board(2, 0.15, 0.85, 0, 1, 0);
+    for (const x of [-0.8, 0.8])
+      for (const z of [-0.28, 0.28]) board(0.13, 1, 0.13, x, 0.5, z, mats.bark);
+    board(0.5, 0.06, 0.4, -0.4, 1.12, 0, mats.bark);
+    mesh(new THREE.DodecahedronGeometry(0.15), mats.rock, 0.45, 1.2, 0, group);
+  }
+  if (type === "furnace") {
+    mesh(
+      new THREE.CylinderGeometry(0.6, 0.78, 1.4, 9),
+      mats.rock,
+      0,
+      0.7,
+      0,
+      group,
+    );
+    mesh(
+      new THREE.CylinderGeometry(0.2, 0.3, 1, 8),
+      mats.rock,
+      0,
+      1.7,
+      0,
+      group,
+    );
+    board(
+      0.5,
+      0.45,
+      0.04,
+      0,
+      0.48,
+      0.65,
+      new THREE.MeshStandardMaterial({ color: "#302821" }),
+    );
+    const glow = new THREE.PointLight("#ff8f45", 1, 4);
+    glow.position.set(0, 0.5, 0.7);
+    group.add(glow);
+  }
+  if (type === "chest") {
+    board(1.35, 0.7, 0.8, 0, 0.4, 0);
+    const lid = board(1.43, 0.15, 0.87, 0, 0.82, 0);
+    for (const x of [-0.4, 0.4]) board(0.08, 0.85, 0.84, x, 0.45, 0, mats.bark);
+    board(0.15, 0.2, 0.03, 0, 0.65, 0.44, mats.rock);
+  }
+  if (type === "bed") {
+    board(1.3, 0.16, 2, 0, 0.15, 0, mats.bark);
+    for (let i = 0; i < 6; i++)
+      board(0.21, 0.16, 1.8, -0.52 + i * 0.21, 0.3, 0, mats.fiber);
+    board(0.8, 0.14, 0.4, 0, 0.4, -0.6, mats.sand);
+  }
+  const b = {
+    type,
+    x,
+    y,
+    z,
+    rot,
+    group,
+    open: !!extra.open,
+    inventory: { ...emptyInventory(), ...extra.inventory },
+  };
+  if (group.userData.door)
+    group.userData.door.rotation.y = b.open ? -Math.PI / 2 : 0;
+  group.traverse((o) => {
+    if (o.isMesh) o.userData.building = b;
+  });
   buildings.push(b);
+  renderer.shadowMap.needsUpdate = true;
   return b;
 }
 function save() {
+  if (dead || resetting) return;
   try {
     localStorage.setItem(
-      "vildmark-save-v1",
+      SAVE_KEY,
       JSON.stringify({
+        version: 2,
         state,
         position: player.position.toArray(),
         yaw: player.yaw,
-        buildings: buildings.map(({ type, x, y, z, rot }) => ({
+        selected,
+        buildings: buildings.map(({ type, x, y, z, rot, open, inventory }) => ({
           type,
           x,
           y,
           z,
           rot,
+          open,
+          inventory,
         })),
-        harvested: resources.filter((r) => !r.alive).map((r) => r.id),
-        questDone,
+        depleted: resources
+          .filter((r) => !r.alive)
+          .map((r) => ({ id: r.id, respawnAt: r.respawnAt })),
       }),
     );
-  } catch {}
+    $("saveStatus").textContent = "◈ SPARAT PÅ DEN HÄR ENHETEN";
+  } catch {
+    $("saveStatus").textContent = "⚠ SPARNING EJ TILLGÄNGLIG";
+  }
 }
 try {
-  const s = JSON.parse(localStorage.getItem("vildmark-save-v1"));
+  const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
   if (
-    s &&
-    s.state &&
-    Array.isArray(s.position) &&
-    s.position.every(Number.isFinite)
+    saved?.version === 2 &&
+    saved.position?.length === 3 &&
+    saved.position.every(Number.isFinite)
   ) {
-    Object.assign(state, s.state);
-    player.position.fromArray(s.position);
-    player.yaw = s.yaw || 0;
-    questDone = !!s.questDone;
-    for (const b of s.buildings || [])
-      if (recipes[b.type]) addBuilding(b.type, b.x, b.y, b.z, b.rot);
-    for (const r of resources)
-      if (s.harvested?.includes(r.id)) {
+    const old = saved.state;
+    for (const k of ["health", "hunger", "thirst", "stamina"])
+      state[k] = THREE.MathUtils.clamp(Number(old[k]) || 0, 0, 100);
+    state.time = Number(old.time) || 0.32;
+    state.day = Math.max(1, Number(old.day) || 1);
+    state.elapsed = Math.max(0, Number(old.elapsed) || 0);
+    state.kills = Number(old.kills) || 0;
+    for (const k of Object.keys(resourceNames))
+      state.inventory[k] = Math.max(
+        0,
+        Math.floor(Number(old.inventory?.[k]) || 0),
+      );
+    state.tools = [...new Set((old.tools || []).filter((k) => items[k]?.tool))];
+    player.position.fromArray(saved.position);
+    player.position.x = THREE.MathUtils.clamp(player.position.x, -65, 65);
+    player.position.z = THREE.MathUtils.clamp(player.position.z, -65, 65);
+    player.position.y = Math.max(
+      player.position.y,
+      heightAt(player.position.x, player.position.z) + 1.7,
+    );
+    player.yaw = Number(saved.yaw) || 0;
+    for (const b of saved.buildings || [])
+      if (items[b.type]?.build && [b.x, b.y, b.z, b.rot].every(Number.isFinite))
+        addBuilding(b.type, b.x, b.y, b.z, b.rot, b);
+    for (const d of saved.depleted || []) {
+      const r = resources.find((r) => r.id === d.id);
+      if (r && d.respawnAt > state.elapsed) {
         r.alive = false;
+        r.respawnAt = d.respawnAt;
         r.group.visible = false;
       }
+    }
+    selected = state.tools.includes(saved.selected) ? saved.selected : "hands";
+    $("play").innerHTML = "FORTSÄTT ÖVERLEVA <span>↗</span>";
   }
 } catch {
-  notice("Sparningen kunde inte läsas. En ny resa börjar.");
+  notice("En ny överlevnad börjar.");
 }
+handModel();
+renderHotbar();
 function reset() {
-  localStorage.removeItem("vildmark-save-v1");
+  resetting = true;
+  localStorage.removeItem(SAVE_KEY);
   location.reload();
 }
-$("reset").onclick = reset;
+$("reset").onclick = () => {
+  reset();
+};
 $("respawn").onclick = reset;
-const keys = new Set();
-function active() {
-  return (
-    document.pointerLockElement === renderer.domElement &&
-    !dead &&
-    $("help").classList.contains("hidden")
-  );
-}
-function play() {
-  if (dead) return;
-  $("help").classList.add("hidden");
-  renderer.domElement.requestPointerLock();
-}
-$("play").onclick = play;
-renderer.domElement.onclick = () => {
-  if (!active() && $("help").classList.contains("hidden") && !dead) play();
+$("play").onclick = lock;
+$("helpBtn").onclick = () => openPanel("help");
+$("closeHelp").onclick = () => closePanels();
+$("closeCraft").onclick = () => closePanels();
+$("closeStorage").onclick = () => closePanels();
+$("quality").onclick = () => {
+  lowGraphics = !lowGraphics;
+  renderer.setPixelRatio(lowGraphics ? 1 : Math.min(devicePixelRatio, 1.35));
+  renderer.shadowMap.enabled = !lowGraphics;
+  renderer.shadowMap.needsUpdate = true;
+  $("quality").textContent =
+    `Grafik: ${lowGraphics ? "låg (snabbare)" : "balanserad"}`;
 };
 document.addEventListener("pointerlockchange", () => {
   keys.clear();
   if (document.pointerLockElement === renderer.domElement) {
     played = true;
     $("menu").classList.add("hidden");
-  } else if (!dead && $("help").classList.contains("hidden")) {
+  } else if (!panel && !dead) {
     $("menu").classList.remove("hidden");
-    $("play").innerHTML = "FORTSÄTT ÄVENTYRET <span>↗</span>";
+    $("play").innerHTML = "FORTSÄTT ÖVERLEVA <span>↗</span>";
     save();
   }
 });
-function help() {
-  const opening = $("help").classList.contains("hidden");
-  $("help").classList.toggle("hidden", !opening);
-  if (opening) {
-    document.exitPointerLock();
-    $("menu").classList.add("hidden");
-  } else play();
-}
-$("helpBtn").onclick = help;
-$("closeHelp").onclick = help;
+renderer.domElement.onclick = () => {
+  if (!active() && !panel && !dead) lock();
+};
 addEventListener("keydown", (e) => {
   if (["Space", "Tab"].includes(e.code)) e.preventDefault();
+  if (e.code === "KeyC" && !e.repeat) {
+    if (panel === "crafting") closePanels();
+    else if (played) openPanel("crafting");
+    return;
+  }
   if (e.code === "KeyH" && !e.repeat) {
-    help();
+    if (panel === "help") closePanels();
+    else openPanel("help");
+    return;
+  }
+  if (panel) {
+    if (e.code === "Escape") closePanels(false);
     return;
   }
   if (!active()) return;
   keys.add(e.code);
-  if (/^Digit[1-5]$/.test(e.code)) select(+e.code.slice(-1) - 1);
-  if (e.code === "KeyB" && !e.repeat) select(selected < 2 ? 2 : 0);
+  if (/^Digit[1-5]$/.test(e.code)) select(hotItems[+e.code.slice(-1) - 1][0]);
+  if (e.code === "KeyE" && !e.repeat) interact();
+  if (e.code === "KeyF" && !e.repeat) eat();
   if (e.code === "KeyR" && !e.repeat) rotation += Math.PI / 2;
-  if (e.code === "KeyF" && !e.repeat) {
-    if (state.berries > 0) {
-      state.berries--;
-      state.hunger = Math.min(100, state.hunger + 22);
-      state.health = Math.min(100, state.health + 3);
-      notice("Bär +22 hunger");
-    } else notice("Hitta bär på öns buskar.");
+  if (e.code === "KeyB" && !e.repeat) {
+    tab = "build";
+    openPanel("crafting");
   }
-  if (e.code === "KeyE" && !e.repeat) harvest();
+  if (e.code === "KeyM" && !e.repeat) $("minimap").classList.toggle("hidden");
   if (e.code === "Space" && player.grounded) {
-    player.vy = 7;
+    player.vy = 6.5;
     player.grounded = false;
   }
 });
@@ -494,8 +681,8 @@ addEventListener("mousemove", (e) => {
     player.yaw -= e.movementX * 0.002;
     player.pitch = THREE.MathUtils.clamp(
       player.pitch - e.movementY * 0.002,
-      -1.48,
-      1.48,
+      -1.45,
+      1.45,
     );
   }
 });
@@ -503,324 +690,747 @@ addEventListener("mousedown", (e) => {
   if (e.button === 0 && active()) use();
 });
 addEventListener("contextmenu", (e) => e.preventDefault());
-addEventListener(
-  "wheel",
-  (e) => {
-    if (active()) select((selected + (e.deltaY > 0 ? 1 : 4)) % 5);
-  },
-  { passive: true },
-);
-const ray = new THREE.Raycaster(),
-  direction = new THREE.Vector3();
 function updateTarget() {
-  camera.getWorldDirection(direction);
-  ray.set(camera.position, direction);
-  ray.far = 5;
-  const hits = ray.intersectObjects(
-    resources.filter((r) => r.alive).map((r) => r.group),
-    true,
-  );
-  target = hits[0]?.object.userData.resource || null;
-  $("target").textContent =
-    selected < 2 && target
-      ? `[E] ${target.type === "wood" ? "Hugg träd" : target.type === "stone" ? "Bryt sten" : "Plocka bär"} · ${target.hp} slag`
-      : "";
+  camera.getWorldDirection(look);
+  ray.set(camera.position, look);
+  ray.far = 4.5;
+  const objects = [
+    ...resources.filter((r) => r.alive).map((r) => r.group),
+    ...buildings.map((b) => b.group),
+    ...animals.filter((a) => a.hp > 0).map((a) => a.group),
+  ];
+  const hit = ray.intersectObjects(objects, true)[0];
+  target = hit
+    ? {
+        resource: hit.object.userData.resource,
+        building: hit.object.userData.building,
+        animal: hit.object.userData.animal,
+      }
+    : null;
+  let text = "";
+  if (target?.resource) {
+    const r = target.resource;
+    const rule = r.pickup ? { allowed: true } : gatherRule(r.kind, selected);
+    text = r.pickup
+      ? `[E] Plocka ${resourceNames[r.kind]}`
+      : rule.allowed
+        ? `[E / KLICK] ${r.kind === "wood" ? "Hugg träd" : r.kind === "fiber" ? "Samla fiber" : r.kind === "berries" ? "Plocka bär" : "Bryt " + resourceNames[r.kind]} · ${r.hp}`
+        : rule.reason;
+  } else if (target?.building) {
+    const b = target.building;
+    text = `[E] ${b.type === "door" ? (b.open ? "Stäng dörr" : "Öppna dörr") : b.type === "water" ? "Drick sötvatten" : b.type === "bed" ? "Sov till morgonen" : items[b.type].name}`;
+  } else if (target?.animal)
+    text =
+      target.animal.kind === "deer"
+        ? "Hjort · jaga med spjut"
+        : "Varg · försvara dig";
+  if (!target && Math.hypot(player.position.x + 12, player.position.z - 8) < 8)
+    text = "[E] Drick sötvatten";
   buildPoint = null;
   ghost.visible = false;
-  if (selected >= 2) {
-    for (let t = 1.5; t < 6; t += 0.1) {
-      const p = camera.position.clone().addScaledVector(direction, t);
-      if (p.y <= heightAt(p.x, p.z) + 0.2) {
-        const x = Math.round(p.x / 2) * 2,
-          z = Math.round(p.z / 2) * 2,
-          y = heightAt(x, z);
+  if (blueprint) {
+    for (let t = 1.5; t <= 6; t += 0.12) {
+      const p = camera.position.clone().addScaledVector(look, t);
+      if (p.y <= heightAt(p.x, p.z) + 0.15) {
+        let x = Math.round(p.x / 2) * 2;
+        let z = Math.round(p.z / 2) * 2;
+        // A cell directly underfoot is not a useful placement. Preview the next
+        // cell in the viewing direction so near-ground aiming still feels natural.
+        if (Math.hypot(x - player.position.x, z - player.position.z) <= 1.5) {
+          if (Math.abs(look.x) > Math.abs(look.z)) x += Math.sign(look.x) * 2;
+          else z += Math.sign(look.z) * 2;
+        }
+        const y = heightAt(x, z);
         if (
-          y >= 0 &&
-          Math.hypot(x - player.position.x, z - player.position.z) > 1.4
+          y > 1.8 &&
+          Math.hypot(x - player.position.x, z - player.position.z) > 1.5 &&
+          Math.hypot(x + 12, z - 8) > 5.5
         ) {
           buildPoint = { x, y, z };
+          const wall = ["wall", "door"].includes(blueprint);
           ghost.position.set(
             x,
-            y + (selected === 2 ? 1.4 : selected === 3 ? 0.12 : 0.5),
+            y + (wall ? 1.3 : blueprint === "roof" ? 2.8 : 0.5),
             z,
           );
           ghost.scale.set(
             2,
-            selected === 2 ? 2.8 : selected === 3 ? 0.2 : 1,
-            selected === 2 ? 0.35 : 2,
+            wall ? 2.6 : blueprint === "roof" ? 0.4 : 1,
+            wall ? 0.2 : 2,
           );
           ghost.rotation.y = rotation;
-          ghost.material.color.set(
-            canCraft(state, slots[selected].type) ? "#d4e6a8" : "#e98970",
-          );
           ghost.visible = true;
+          ghost.material.color.set(
+            craftStatus(
+              state.inventory,
+              state.tools,
+              blueprint,
+              nearbyStations(),
+            ).ok
+              ? "#b7e0b6"
+              : "#e98c73",
+          );
         }
         break;
       }
     }
-    $("target").textContent = buildPoint
-      ? "Vänsterklick: bygg · R: rotera"
-      : "Sikta på marken i närheten";
+    text = buildPoint
+      ? `${items[blueprint].name} · ${costLabel(items[blueprint].cost)} · KLICK placera`
+      : "Sikta på torr mark 2–6 meter framför dig";
   }
+  $("target").textContent = text;
 }
-function harvest() {
-  if (performance.now() < hitCooldown) return;
-  if (!target) {
-    notice("Gå närmare ett träd, en sten eller en bärbuske.");
+function gather() {
+  if (performance.now() < hitUntil) return;
+  const r = target?.resource;
+  if (!r) return;
+  const rule = r.pickup
+    ? { allowed: true, damage: 1, amount: r.kind === "fiber" ? 2 : 1 }
+    : gatherRule(r.kind, selected);
+  if (!rule.allowed) {
+    notice(rule.reason);
     return;
   }
-  hitCooldown = performance.now() + 420;
+  hitUntil =
+    performance.now() + (r.pickup ? 180 : selected === "hands" ? 600 : 400);
   swing = 1;
-  target.hp--;
-  target.group.rotation.z = 0.035;
-  const struck = target;
-  setTimeout(() => {
-    struck.group.rotation.z = 0;
-  }, 100);
-  if (target.hp <= 0) {
-    const amount = target.type === "wood" ? 6 : target.type === "stone" ? 4 : 3;
-    state[target.type] += amount;
-    target.alive = false;
-    target.group.visible = false;
-    notice(
-      `+${amount} ${target.type === "wood" ? "trä" : target.type === "stone" ? "sten" : "bär"}`,
-    );
+  r.hp -= rule.damage;
+  r.group.rotation.z = 0.035;
+  setTimeout(() => (r.group.rotation.z = 0), 110);
+  if (r.hp <= 0) {
+    state.inventory[r.kind] += rule.amount;
+    r.alive = false;
+    r.group.visible = false;
+    r.respawnAt =
+      state.elapsed +
+      (r.pickup ? 220 : r.kind === "berries" || r.kind === "fiber" ? 160 : 650);
+    renderer.shadowMap.needsUpdate = true;
+    notice(`+${rule.amount} ${resourceNames[r.kind]}`);
+    save();
     target = null;
+  }
+}
+function interact() {
+  if (blueprint) return;
+  if (target?.resource) {
+    gather();
+    return;
+  }
+  if (target?.building) {
+    const b = target.building;
+    if (b.type === "door") {
+      b.open = !b.open;
+      b.group.userData.door.rotation.y = b.open ? -Math.PI / 2 : 0;
+      renderer.shadowMap.needsUpdate = true;
+      save();
+      return;
+    }
+    if (b.type === "chest") {
+      openPanel("storage");
+      openChest = b;
+      renderStorage();
+      return;
+    }
+    if (b.type === "bed") {
+      if (
+        animals.some(
+          (a) =>
+            a.kind === "wolf" &&
+            a.group.position.distanceTo(player.position) < 15,
+        )
+      ) {
+        notice("En varg är för nära. Gör lägret tryggt först.");
+        return;
+      }
+      if (state.time > 0.23 && state.time < 0.72) {
+        notice("Du kan sova på kvällen och natten.");
+        return;
+      }
+      state.time = 0.3;
+      state.day++;
+      state.hunger = Math.max(5, state.hunger - 14);
+      state.thirst = Math.max(5, state.thirst - 18);
+      state.health = Math.min(100, state.health + 25);
+      animals
+        .filter((a) => a.kind === "wolf")
+        .forEach((a) => {
+          scene.remove(a.group);
+          a.hp = 0;
+        });
+      notice("Du vaknar till en ny morgon.");
+      save();
+      return;
+    }
+    if (["bench", "furnace", "fire"].includes(b.type)) {
+      tab = b.type === "bench" ? "tools" : "food";
+      openPanel("crafting");
+      return;
+    }
+  }
+  if (Math.hypot(player.position.x + 12, player.position.z - 8) < 8) {
+    state.thirst = 100;
+    notice("Svalt sötvatten. Törsten är släckt.");
     save();
   }
 }
+function eat() {
+  const inv = state.inventory;
+  if (inv.meat > 0) {
+    inv.meat--;
+    state.hunger = Math.min(100, state.hunger + 48);
+    state.health = Math.min(100, state.health + 8);
+    notice("Stekt kött · +48 mättnad");
+  } else if (inv.berries > 0) {
+    inv.berries--;
+    state.hunger = Math.min(100, state.hunger + 16);
+    state.thirst = Math.min(100, state.thirst + 5);
+    notice("Bär · +16 mättnad");
+  } else notice("Plocka bär eller jaga och stek kött vid en eld.");
+  save();
+}
+function renderStorage() {
+  $("storageRows").innerHTML = Object.entries(resourceNames)
+    .map(
+      ([key, name]) =>
+        `<div class="storage-row"><span>${name}</span><button data-transfer="deposit" data-key="${key}" ${state.inventory[key] ? "" : "disabled"}>Packning ${state.inventory[key]} →</button><button data-transfer="take" data-key="${key}" ${openChest.inventory[key] ? "" : "disabled"}>← Kista ${openChest.inventory[key]}</button></div>`,
+    )
+    .join("");
+}
+$("storageRows").onclick = (e) => {
+  const b = e.target.closest("[data-transfer]");
+  if (!b || b.disabled || !openChest) return;
+  const from =
+      b.dataset.transfer === "deposit" ? state.inventory : openChest.inventory,
+    to =
+      b.dataset.transfer === "deposit" ? openChest.inventory : state.inventory,
+    key = b.dataset.key;
+  to[key] += from[key];
+  from[key] = 0;
+  renderStorage();
+  save();
+};
 function use() {
-  if (performance.now() < hitCooldown) return;
-  if (selected >= 2) {
+  if (performance.now() < hitUntil) return;
+  if (blueprint) {
     if (!buildPoint) {
-      notice("Sikta på torr mark, en bit framför dig.");
+      notice("Sikta på torr mark en bit framför dig.");
       return;
     }
-    const { x, y, z } = buildPoint,
-      type = slots[selected].type;
+    const { x, y, z } = buildPoint;
     if (
       buildings.some(
         (b) =>
+          b.type === blueprint &&
           b.x === x &&
           b.z === z &&
-          b.type === type &&
           b.rot % Math.PI === rotation % Math.PI,
       )
     ) {
-      notice("Här finns redan ett bygge.");
+      notice("Här finns redan ett sådant bygge.");
       return;
     }
-    if (!craft(state, type)) {
-      notice("Du behöver fler resurser.");
-      return;
-    }
-    addBuilding(type, x, y, z, rotation);
-    hitCooldown = performance.now() + 350;
-    notice(
-      type === "fire" ? "En varm plats i vildmarken." : "Ditt skydd tar form.",
+    const status = makeItem(
+      state.inventory,
+      state.tools,
+      blueprint,
+      nearbyStations(),
     );
-    save();
-  } else {
-    let hit = false;
-    for (const w of wolves) {
-      const delta = w.group.position.clone().sub(player.position);
-      delta.y = 0;
-      if (delta.length() < 3.7 && delta.normalize().dot(direction) > 0.55) {
-        w.hp -= selected === 1 ? 55 : 25;
-        w.flash = 0.2;
-        hit = true;
-        if (w.hp <= 0) {
-          scene.remove(w.group);
-          wolves.splice(wolves.indexOf(w), 1);
-          notice("Vargen är besegrad.");
-        }
-        break;
-      }
+    if (!status.ok) {
+      notice(status.reason);
+      return;
     }
-    if (hit) {
-      hitCooldown = performance.now() + 500;
-      swing = 1;
-    } else harvest();
+    addBuilding(blueprint, x, y, z, rotation);
+    notice(`${items[blueprint].name} byggd.`);
+    hitUntil = performance.now() + 300;
+    save();
+    return;
+  }
+  if (target?.animal) {
+    const a = target.animal,
+      distance = a.group.position.distanceTo(player.position);
+    if (distance > (selected === "spear" ? 4.6 : 2.7)) {
+      notice("Gå närmare för att träffa.");
+      return;
+    }
+    a.hp -=
+      selected === "spear"
+        ? 48
+        : selected === "ironAxe"
+          ? 35
+          : selected === "axe"
+            ? 24
+            : 8;
+    a.fleeUntil = state.elapsed + 8;
+    swing = 1;
+    hitUntil = performance.now() + 450;
+    if (a.hp <= 0) {
+      scene.remove(a.group);
+      state.inventory.rawMeat += a.kind === "deer" ? 3 : 2;
+      state.inventory.fiber += 2;
+      state.kills++;
+      notice("Jaktbyte · rått kött och fiber. Stek köttet vid en eld.");
+      save();
+    } else notice(a.kind === "wolf" ? "Vargen är skadad." : "Hjorten flyr!");
+    return;
+  }
+  if (target?.resource) gather();
+  else {
+    swing = 1;
+    hitUntil = performance.now() + 400;
   }
 }
-function spawnWolf() {
-  const a = rand() * Math.PI * 2,
-    r = 15 + rand() * 8,
-    x = THREE.MathUtils.clamp(player.position.x + Math.cos(a) * r, -35, 35),
-    z = THREE.MathUtils.clamp(player.position.z + Math.sin(a) * r, -35, 35);
-  if (heightAt(x, z) < 0) return;
-  const group = new THREE.Group(),
-    fur = mat("#5c6662");
-  mesh(new THREE.BoxGeometry(0.65, 0.7, 1.4), fur, 0, 0.7, 0, group);
-  mesh(new THREE.BoxGeometry(0.58, 0.55, 0.65), fur, 0, 1.05, -0.8, group);
-  for (const sx of [-0.23, 0.23]) {
-    mesh(new THREE.ConeGeometry(0.16, 0.38, 3), fur, sx, 1.5, -0.8, group);
-    mesh(
-      new THREE.BoxGeometry(0.09, 0.07, 0.02),
-      new THREE.MeshBasicMaterial({ color: "#ffc978" }),
-      sx,
-      1.12,
-      -1.135,
-      group,
-    );
-    for (const sz of [-0.48, 0.48])
-      mesh(new THREE.BoxGeometry(0.16, 0.6, 0.16), fur, sx, 0.3, sz, group);
-  }
+function spawnAnimal(kind, x, z) {
+  if (heightAt(x, z) < 2.3) return;
+  const group = new THREE.Group();
   group.position.set(x, heightAt(x, z), z);
   scene.add(group);
-  wolves.push({ group, hp: 100, cooldown: 0, flash: 0 });
+  const fur = new THREE.MeshStandardMaterial({
+    color: kind === "wolf" ? "#73786e" : "#9c7650",
+    roughness: 1,
+  });
+  const ellipsoid = (sx, sy, sz, px, py, pz, material = fur) => {
+    const m = mesh(
+      new THREE.SphereGeometry(1, 9, 7),
+      material,
+      px,
+      py,
+      pz,
+      group,
+    );
+    m.scale.set(sx, sy, sz);
+    return m;
+  };
+  ellipsoid(0.36, 0.44, 0.74, 0, 0.9, 0);
+  ellipsoid(0.24, 0.32, 0.3, 0, kind === "wolf" ? 1.15 : 1.55, -0.7);
+  ellipsoid(0.15, 0.13, 0.27, 0, kind === "wolf" ? 1.06 : 1.48, -0.95);
+  if (kind === "deer") {
+    const neck = mesh(
+      new THREE.CylinderGeometry(0.16, 0.23, 0.8, 7),
+      fur,
+      0,
+      1.22,
+      -0.55,
+      group,
+    );
+    neck.rotation.x = -0.3;
+    for (const sx of [-0.16, 0.16]) {
+      const antler = mesh(
+        new THREE.CylinderGeometry(0.025, 0.045, 0.55, 5),
+        mats.bark,
+        sx,
+        1.99,
+        -0.72,
+        group,
+      );
+      antler.rotation.z = -sx * 1.5;
+    }
+  }
+  for (const sx of [-0.22, 0.22]) {
+    const ear = mesh(
+      new THREE.ConeGeometry(0.12, 0.3, 5),
+      fur,
+      sx,
+      kind === "wolf" ? 1.55 : 1.88,
+      -0.73,
+      group,
+    );
+    ear.rotation.z = sx * 1.5;
+    ellipsoid(
+      0.035,
+      0.035,
+      0.02,
+      sx,
+      kind === "wolf" ? 1.2 : 1.58,
+      -0.93,
+      new THREE.MeshBasicMaterial({
+        color: kind === "wolf" ? "#e6c674" : "#28251e",
+      }),
+    );
+  }
+  const legs = [];
+  for (const sx of [-0.23, 0.23])
+    for (const sz of [-0.45, 0.45]) {
+      const leg = mesh(
+        new THREE.CylinderGeometry(0.055, 0.075, 0.7, 6),
+        fur,
+        sx,
+        0.37,
+        sz,
+        group,
+      );
+      legs.push(leg);
+    }
+  const tail = mesh(
+    new THREE.ConeGeometry(0.13, 0.6, 6),
+    fur,
+    0,
+    1.02,
+    0.8,
+    group,
+  );
+  tail.rotation.x = -1;
+  const animal = {
+    kind,
+    group,
+    legs,
+    hp: kind === "wolf" ? 100 : 80,
+    direction: rand() * 6,
+    turnAt: 0,
+    cooldown: 0,
+    fleeUntil: 0,
+  };
+  group.traverse((o) => {
+    if (o.isMesh) o.userData.animal = animal;
+  });
+  animals.push(animal);
 }
-function collides(x, z) {
-  if (Math.abs(x) > 47 || Math.abs(z) > 47) return true;
-  for (const b of buildings)
-    if (b.type === "wall") {
-      const dx = x - b.x,
-        dz = z - b.z,
-        c = Math.cos(b.rot),
-        s = Math.sin(b.rot);
-      if (
-        Math.abs(c * dx - s * dz) < 1.35 &&
-        Math.abs(s * dx + c * dz) < 0.48 &&
-        player.position.y < b.y + 4.4
-      )
+for (const p of [
+  [14, 4],
+  [24, -8],
+  [-20, -18],
+  [-25, 23],
+  [18, 24],
+  [5, -23],
+])
+  spawnAnimal("deer", ...p);
+function blocked(x, z, animal = false) {
+  if (Math.hypot(x, z) > WORLD_RADIUS - 4) return true;
+  for (const b of buildings) {
+    if (
+      !["wall", "door", "chest", "bench", "furnace"].includes(b.type) ||
+      (b.type === "door" && b.open)
+    )
+      continue;
+    const dx = x - b.x,
+      dz = z - b.z,
+      c = Math.cos(b.rot),
+      s = Math.sin(b.rot),
+      wall = ["wall", "door"].includes(b.type);
+    if (
+      Math.abs(c * dx - s * dz) < (wall ? 1.22 : 0.85) &&
+      Math.abs(s * dx + c * dz) < (wall ? 0.43 : 0.65) &&
+      (animal || player.position.y < b.y + 3.9)
+    )
+      return true;
+  }
+  for (const r of resources)
+    if (r.alive && !r.pickup && ["wood", "stone", "ore"].includes(r.kind)) {
+      const radius = r.kind === "wood" ? 0.55 : 1.1;
+      if (Math.hypot(x - r.group.position.x, z - r.group.position.z) < radius)
         return true;
     }
   return false;
 }
-function die() {
-  dead = true;
-  state.health = 0;
-  localStorage.removeItem("vildmark-save-v1");
-  document.exitPointerLock();
-  $("menu").classList.add("hidden");
-  $("death").classList.remove("hidden");
-  $("deathText").textContent =
-    `Du klarade dig till dag ${state.day}. Ön väntar på ditt nästa försök.`;
+function damage(amount, message) {
+  state.health = Math.max(0, state.health - amount);
+  hurtUntil = performance.now() + 500;
+  if (message) notice(message);
+  if (state.health <= 0 && !dead) {
+    dead = true;
+    localStorage.removeItem(SAVE_KEY);
+    if (document.pointerLockElement) document.exitPointerLock();
+    $("menu").classList.add("hidden");
+    $("death").classList.remove("hidden");
+    $("deathText").textContent =
+      `Du överlevde till dag ${state.day}, byggde ${buildings.length} delar och tillverkade ${state.tools.length} verktyg.`;
+  }
 }
-function update(dt, t) {
-  swing = Math.max(0, swing - dt * 4);
-  hand.rotation.x = -Math.sin(swing * Math.PI) * 0.8;
-  hand.position.y = Math.sin(t * 6) * 0.008;
-  if (active()) {
-    const moving =
-        keys.has("KeyW") ||
-        keys.has("KeyS") ||
-        keys.has("KeyA") ||
-        keys.has("KeyD"),
-      sprinting = moving && keys.has("ShiftLeft") && state.stamina > 2;
-    state.stamina = THREE.MathUtils.clamp(
-      state.stamina + (sprinting ? -19 : 12) * dt,
-      0,
-      100,
+function simulate(dt, t) {
+  const moving =
+      keys.has("KeyW") ||
+      keys.has("KeyS") ||
+      keys.has("KeyA") ||
+      keys.has("KeyD"),
+    sprint =
+      moving &&
+      (keys.has("ShiftLeft") || keys.has("ShiftRight")) &&
+      state.stamina > 3;
+  state.stamina = THREE.MathUtils.clamp(
+    state.stamina + (sprint ? -18 : 12) * dt,
+    0,
+    100,
+  );
+  const forward = +keys.has("KeyW") - +keys.has("KeyS"),
+    side = +keys.has("KeyD") - +keys.has("KeyA"),
+    n = Math.hypot(forward, side) || 1,
+    speed = (sprint ? 6 : 3.5) * dt * (state.thirst <= 0 ? 0.65 : 1),
+    dx =
+      ((-Math.sin(player.yaw) * forward + Math.cos(player.yaw) * side) / n) *
+      speed,
+    dz =
+      ((-Math.cos(player.yaw) * forward - Math.sin(player.yaw) * side) / n) *
+      speed;
+  if (
+    !blocked(player.position.x + dx, player.position.z) &&
+    heightAt(player.position.x + dx, player.position.z) <
+      player.position.y - 0.55
+  )
+    player.position.x += dx;
+  if (
+    !blocked(player.position.x, player.position.z + dz) &&
+    heightAt(player.position.x, player.position.z + dz) <
+      player.position.y - 0.55
+  )
+    player.position.z += dz;
+  player.vy -= 18 * dt;
+  player.position.y += player.vy * dt;
+  let ground = heightAt(player.position.x, player.position.z) + 1.7;
+  for (const b of buildings)
+    if (
+      b.type === "floor" &&
+      Math.abs(b.x - player.position.x) < 1 &&
+      Math.abs(b.z - player.position.z) < 1
+    )
+      ground = Math.max(ground, b.y + 1.95);
+  if (player.position.y <= ground) {
+    if (player.vy < -12) damage(Math.min(40, (-player.vy - 12) * 3));
+    player.position.y = ground;
+    player.vy = 0;
+    player.grounded = true;
+  } else player.grounded = false;
+  state.elapsed += dt;
+  state.hunger = Math.max(0, state.hunger - dt * (sprint ? 0.16 : 0.1));
+  state.thirst = Math.max(0, state.thirst - dt * (sprint ? 0.23 : 0.15));
+  if (state.hunger <= 0 || state.thirst <= 0) damage(dt * 1.6);
+  if (ground < 1.5) damage(dt * 3);
+  const warmth = buildings.some(
+    (b) =>
+      b.type === "fire" && b.group.position.distanceTo(player.position) < 6,
+  );
+  if (warmth && state.hunger > 15 && state.thirst > 10)
+    state.health = Math.min(100, state.health + dt * 1.1);
+  state.time += dt / 600;
+  if (state.time >= 1) {
+    state.time -= 1;
+    state.day++;
+    notice(`Dag ${state.day} — ön vaknar igen.`);
+  }
+  const night = state.time > 0.76 || state.time < 0.21;
+  animalTimer += dt;
+  if (
+    night &&
+    animalTimer > 18 &&
+    animals.filter((a) => a.kind === "wolf" && a.hp > 0).length < 4
+  ) {
+    const a = rand() * 6;
+    spawnAnimal(
+      "wolf",
+      player.position.x + Math.cos(a) * 20,
+      player.position.z + Math.sin(a) * 20,
     );
-    const speed = (sprinting ? 6.5 : 3.7) * dt,
-      forward = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0),
-      side = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0),
-      norm = Math.hypot(forward, side) || 1;
-    const dx =
-        ((-Math.sin(player.yaw) * forward + Math.cos(player.yaw) * side) /
-          norm) *
-        speed,
-      dz =
-        ((-Math.cos(player.yaw) * forward - Math.sin(player.yaw) * side) /
-          norm) *
-        speed;
-    const nx = player.position.x + dx,
-      nz = player.position.z + dz;
-    if (
-      !collides(nx, player.position.z) &&
-      heightAt(nx, player.position.z) <= player.position.y - 0.65
-    )
-      player.position.x = nx;
-    if (
-      !collides(player.position.x, nz) &&
-      heightAt(player.position.x, nz) <= player.position.y - 0.65
-    )
-      player.position.z = nz;
-    player.vy -= 20 * dt;
-    player.position.y += player.vy * dt;
-    let ground = heightAt(player.position.x, player.position.z) + 1.7;
-    for (const b of buildings)
-      if (
-        b.type === "floor" &&
-        Math.abs(player.position.x - b.x) < 1 &&
-        Math.abs(player.position.z - b.z) < 1
-      )
-        ground = Math.max(ground, b.y + 1.95);
-    if (player.position.y <= ground) {
-      player.position.y = ground;
-      player.vy = 0;
-      player.grounded = true;
-    }
-    state.hunger = Math.max(0, state.hunger - dt * 0.24);
-    if (state.hunger <= 0) state.health -= dt * 2;
-    if (ground < 1.7) state.health -= dt * 4;
-    let warmth = false;
-    for (const b of buildings)
-      if (b.type === "fire" && b.group.position.distanceTo(player.position) < 6)
-        warmth = true;
-    if (warmth && state.hunger > 10)
-      state.health = Math.min(100, state.health + dt * 1.8);
-    state.time += dt / 480;
-    if (state.time >= 1) {
-      state.time -= 1;
-      state.day++;
-      notice(`Dag ${state.day} — ännu en morgon.`);
-    }
-    const night = state.time > 0.76 || state.time < 0.2;
-    enemyTimer += dt;
-    if (night && enemyTimer > 12 && wolves.length < 5) {
-      spawnWolf();
-      enemyTimer = 0;
-    }
-    for (const w of [...wolves]) {
-      w.cooldown -= dt;
-      const delta = player.position.clone().sub(w.group.position);
-      delta.y = 0;
-      const distance = delta.length();
-      let flee = buildings.some(
+    animalTimer = 0;
+  }
+  for (const a of animals) {
+    if (a.hp <= 0) continue;
+    a.cooldown = Math.max(0, a.cooldown - dt);
+    const delta = player.position.clone().sub(a.group.position);
+    delta.y = 0;
+    const distance = delta.length();
+    const fearFire = buildings.some(
         (b) =>
           b.type === "fire" &&
-          b.group.position.distanceTo(w.group.position) < 7,
-      );
-      if (!night || flee) {
-        delta.negate();
-        if (distance > 38) {
-          scene.remove(w.group);
-          wolves.splice(wolves.indexOf(w), 1);
-          continue;
-        }
+          b.group.position.distanceTo(a.group.position) < 8,
+      ),
+      flee =
+        a.kind === "deer"
+          ? distance < 7 || a.fleeUntil > state.elapsed
+          : fearFire || !night;
+    let speed = 0,
+      dir = new THREE.Vector3();
+    if (flee) {
+      dir.copy(delta).negate().normalize();
+      speed = a.kind === "deer" ? 5 : 3.4;
+    } else if (a.kind === "wolf") {
+      dir.copy(delta).normalize();
+      speed = distance > 1.8 ? 2.1 : 0;
+    } else {
+      if (state.elapsed > a.turnAt) {
+        a.direction = rand() * 6;
+        a.turnAt = state.elapsed + 3 + rand() * 5;
       }
-      if (distance > 1.5 || flee) {
-        delta.normalize();
-        const x = w.group.position.x + delta.x * dt * (night ? 2.1 : 3),
-          z = w.group.position.z + delta.z * dt * (night ? 2.1 : 3);
-        const wall = buildings.some(
-          (b) => b.type === "wall" && Math.hypot(b.x - x, b.z - z) < 1.5,
-        );
-        if (!wall && heightAt(x, z) >= 0) {
-          w.group.position.set(x, heightAt(x, z), z);
-          w.group.rotation.y = Math.atan2(-delta.x, -delta.z);
-        }
-      }
-      if (distance < 1.9 && !flee && night && w.cooldown <= 0) {
-        state.health -= 12;
-        w.cooldown = 1.3;
-        notice("En varg attackerar! Använd spjutet [2].");
-      }
+      dir.set(Math.sin(a.direction), 0, Math.cos(a.direction));
+      speed = 0.65;
     }
-    if (state.health <= 0) die();
-    saveTimer += dt;
-    if (saveTimer > 10) {
-      save();
-      saveTimer = 0;
+    const x = a.group.position.x + dir.x * dt * speed,
+      z = a.group.position.z + dir.z * dt * speed;
+    if (heightAt(x, z) > 2.3 && !blocked(x, z, true)) {
+      a.group.position.set(x, heightAt(x, z), z);
+      if (speed) a.group.rotation.y = Math.atan2(-dir.x, -dir.z);
+    } else a.direction += 1;
+    for (let i = 0; i < a.legs.length; i++)
+      a.legs[i].rotation.x =
+        Math.sin(t * speed * 3 + (i % 2) * Math.PI) *
+        Math.min(0.55, speed * 0.15);
+    if (a.kind === "wolf" && !flee && distance < 2 && a.cooldown === 0) {
+      damage(
+        11,
+        "En varg attackerar! Använd ditt spjut och sök skydd vid elden.",
+      );
+      a.cooldown = 1.5;
     }
   }
+  for (const r of resources)
+    if (!r.alive && r.respawnAt <= state.elapsed) {
+      r.alive = true;
+      r.group.visible = true;
+      r.hp = r.pickup
+        ? 1
+        : r.kind === "wood"
+          ? 6
+          : r.kind === "stone"
+            ? 5
+            : r.kind === "ore"
+              ? 7
+              : 2;
+      renderer.shadowMap.needsUpdate = true;
+    }
+  saveTimer += dt;
+  if (saveTimer > 10) {
+    save();
+    saveTimer = 0;
+  }
+}
+function renderHUD() {
+  for (const key of ["health", "hunger", "thirst", "stamina"]) {
+    $(key + "Text").textContent = Math.ceil(state[key]);
+    $(key + "Bar").style.width = `${state[key]}%`;
+  }
+  $("inventory").innerHTML = [
+    "wood",
+    "stone",
+    "fiber",
+    "berries",
+    "ore",
+    "metal",
+    "meat",
+  ]
+    .filter(
+      (k) => state.inventory[k] > 0 || ["wood", "stone", "fiber"].includes(k),
+    )
+    .map(
+      (k) =>
+        `<span><b>${state.inventory[k]}</b> ${resourceNames[k].toUpperCase()}</span>`,
+    )
+    .join("");
+  const minutes = Math.floor(state.time * 1440);
+  $("clock").textContent =
+    `DAG ${state.day} · ${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const headings = ["N", "NV", "V", "SV", "S", "SÖ", "Ö", "NÖ"];
+  $("compass").textContent =
+    headings[((Math.round(player.yaw / (Math.PI / 4)) % 8) + 8) % 8];
+  $("coords").textContent =
+    `STRANDAD / ${Math.round(player.position.x)} · ${Math.round(player.position.z)}`;
+  $("biome").textContent =
+    Math.hypot(player.position.x + 12, player.position.z - 8) < 10
+      ? "Sötvattenskällan · E för att dricka"
+      : player.position.z < -10
+        ? "Norra tallskogen"
+        : heightAt(player.position.x, player.position.z) < 3
+          ? "Södra stranden"
+          : "Lövskogen";
+  const goals = [
+    [
+      "axe",
+      "De första verktygen.",
+      "Plocka grenar, småsten och fiber. Tillverka en stenyxa [C].",
+      state.tools.includes("axe"),
+    ],
+    [
+      "pickaxe",
+      "Från sten till möjligheter.",
+      "Tillverka en stenhacka. Bryt sten och leta efter järnmalm.",
+      state.tools.includes("pickaxe"),
+    ],
+    [
+      "fire",
+      "En plats i mörkret.",
+      "Bygg en lägereld. Den ger värme, skydd och möjlighet att laga mat.",
+      buildings.some((b) => b.type === "fire"),
+    ],
+    [
+      "spear",
+      "Lev av ön.",
+      "Tillverka ett spjut, jaga en hjort och stek köttet vid elden.",
+      state.tools.includes("spear") && state.kills > 0,
+    ],
+    [
+      "bench",
+      "Ett riktigt läger.",
+      "Bygg en arbetsbänk och ett skydd med väggar och tak.",
+      buildings.some((b) => b.type === "bench") &&
+        buildings.some((b) => b.type === "roof"),
+    ],
+    [
+      "furnace",
+      "Tämj elden.",
+      "Bygg en smältugn nära arbetsbänken. Smält malm till järn.",
+      state.inventory.metal > 0 || state.tools.includes("ironAxe"),
+    ],
+    [
+      "ironAxe",
+      "En ny tidsålder.",
+      "Tillverka en järnyxa vid arbetsbänken.",
+      state.tools.includes("ironAxe"),
+    ],
+  ];
+  const next = goals.find((g) => !g[3]);
+  $("questTitle").textContent = next ? next[1] : "Ön är ditt hem.";
+  $("quest").textContent = next
+    ? next[2]
+    : "Utöka ditt läger, fyll förråden och överlev nästa natt.";
+  $("questStep").textContent =
+    `ÖVERLEVNAD ${goals.filter((g) => g[3]).length} / ${goals.length}`;
+  $("questProgress").style.width =
+    `${(goals.filter((g) => g[3]).length / goals.length) * 100}%`;
+}
+const map = $("minimap"),
+  ctx = map.getContext("2d"),
+  mapBG = document.createElement("canvas");
+mapBG.width = mapBG.height = 150;
+const mctx = mapBG.getContext("2d");
+for (let x = 0; x < 150; x += 2)
+  for (let z = 0; z < 150; z += 2) {
+    const h = heightAt(x - 75, z - 75);
+    mctx.fillStyle =
+      h < 0 ? "#3c6665" : h < 2 ? "#b4a47d" : h > 7 ? "#667652" : "#496a47";
+    mctx.fillRect(x, z, 2, 2);
+  }
+function drawMap() {
+  ctx.drawImage(mapBG, 0, 0);
+  ctx.fillStyle = "#7fc2cc";
+  ctx.beginPath();
+  ctx.arc(63, 83, 5, 0, Math.PI * 2);
+  ctx.fill();
+  for (const b of buildings) {
+    ctx.fillStyle = b.type === "fire" ? "#f2b765" : "#d3c49a";
+    ctx.fillRect(b.x + 74, b.z + 74, 3, 3);
+  }
+  ctx.save();
+  ctx.translate(player.position.x + 75, player.position.z + 75);
+  ctx.rotate(-player.yaw);
+  ctx.fillStyle = "#ffedbd";
+  ctx.beginPath();
+  ctx.moveTo(0, -5);
+  ctx.lineTo(-3, 4);
+  ctx.lineTo(3, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#d2dfcf";
+  ctx.font = "9px sans-serif";
+  ctx.fillText("N", 72, 11);
+}
+function update(dt, t) {
+  hand.visible = active() && !blueprint;
+  if (active()) simulate(dt, t);
+  swing = Math.max(0, swing - dt * 5);
+  hand.rotation.x = -Math.sin(swing * Math.PI) * 0.8;
+  hand.position.y = Math.sin(t * 5) * 0.008;
   camera.position.copy(player.position);
   camera.rotation.set(player.pitch, player.yaw, 0);
   if (!played) {
-    camera.position.set(13, 11, 22);
-    camera.lookAt(-3, 3, -4);
+    camera.position.set(12, 12, 30);
+    camera.lookAt(-8, 3, 1);
   }
   camera.updateMatrixWorld();
   if (active()) updateTarget();
@@ -828,57 +1438,48 @@ function update(dt, t) {
     ghost.visible = false;
     $("target").textContent = "";
   }
-  const daylight = THREE.MathUtils.smoothstep(
+  const light = THREE.MathUtils.smoothstep(
     Math.sin((state.time - 0.23) * Math.PI * 2),
     -0.22,
-    0.35,
+    0.4,
   );
   scene.background.setRGB(
-    0.055 + daylight * 0.46,
-    0.09 + daylight * 0.61,
-    0.13 + daylight * 0.6,
+    0.04 + light * 0.52,
+    0.065 + light * 0.61,
+    0.1 + light * 0.61,
   );
   scene.fog.color.copy(scene.background);
-  hemi.intensity = 0.25 + daylight * 2.1;
-  sun.intensity = 0.15 + daylight * 2.7;
+  hemi.intensity = 0.2 + light * 2;
+  sun.intensity = 0.1 + light * 2.8;
   sun.position.set(
-    Math.cos(state.time * Math.PI * 2) * 45,
-    15 + daylight * 45,
-    -30,
+    Math.cos(state.time * Math.PI * 2) * 55,
+    15 + light * 55,
+    -35,
   );
-  water.material.color.set(daylight > 0.4 ? "#609e9b" : "#253e51");
+  world.update(t, light);
+  shadowTimer += dt;
+  if (shadowTimer > 1) {
+    renderer.shadowMap.needsUpdate = true;
+    shadowTimer = 0;
+  }
   for (const b of buildings)
     if (b.type === "fire") {
-      b.group.userData.flame.scale.setScalar(1 + Math.sin(t * 15) * 0.1);
-      b.group.userData.light.intensity = 7 + Math.sin(t * 13);
+      b.group.userData.flame.scale.set(
+        1 + Math.sin(t * 12) * 0.1,
+        1 + Math.cos(t * 13) * 0.12,
+        1,
+      );
+      b.group.userData.light.intensity = 7 + Math.sin(t * 11);
+      b.group.userData.smoke.position.y = 1.3 + ((t * 0.6) % 1.8);
+      b.group.userData.smoke.scale.setScalar(0.5 + ((t * 0.6) % 1.8));
     }
-  for (const key of ["health", "hunger", "stamina"]) {
-    $(key + "Text").textContent = Math.max(0, Math.ceil(state[key]));
-    $(key + "Bar").style.width = `${Math.max(0, state[key])}%`;
+  $("hurt").style.opacity = performance.now() < hurtUntil ? 0.35 : 0;
+  mapTimer += dt;
+  if (mapTimer > 0.15) {
+    renderHUD();
+    drawMap();
+    mapTimer = 0;
   }
-  for (const key of ["wood", "stone", "berries"])
-    $(key).textContent = state[key];
-  const hour = Math.floor(state.time * 24),
-    minute = Math.floor(state.time * 24 * 60) % 60;
-  $("clock").textContent =
-    `DAG ${state.day} · ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  $("coords").textContent =
-    `ÖN / ${Math.round(player.position.x)} N · ${Math.round(player.position.z)} Ö`;
-  if (!questDone && state.wood >= 12 && state.stone >= 8) {
-    questDone = true;
-    notice("Resurserna är säkrade. Bygg ditt första läger!");
-  }
-  const fire = buildings.some((b) => b.type === "fire");
-  $("quest").textContent = fire
-    ? "Håll dig mätt. Försvara ditt läger. Utforska ön."
-    : questDone
-      ? "Bygg en lägereld [5] och ett skydd [3]."
-      : "Samla 12 trä och 8 sten.";
-  $("questProgress").style.width = fire
-    ? "100%"
-    : questDone
-      ? "65%"
-      : `${Math.min(1, (Math.min(12, state.wood) + Math.min(8, state.stone)) / 20) * 50}%`;
 }
 let last = performance.now();
 function frame(now) {
@@ -889,11 +1490,11 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+renderHUD();
+drawMap();
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
-addEventListener("beforeunload", () => {
-  if (!dead) save();
-});
+addEventListener("beforeunload", save);
