@@ -10,5 +10,8 @@ html=await replaceAsync(html,/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)
 if(/<script[^>]+src=|<link[^>]+stylesheet/.test(html))throw new Error('External assets remain');
 await mkdir(resolve(root,'artifacts'),{recursive:true});
 await writeFile(resolve(root,'artifacts/Vildmark.html'),html);
+await mkdir(resolve(root,'public'),{recursive:true});
+await writeFile(resolve(root,'public/Vildmark.html'),html);
+await writeFile(resolve(root,'dist/Vildmark.html'),html);
 console.log('Created artifacts/Vildmark.html');
 async function replaceAsync(text,re,fn){const matches=[...text.matchAll(re)];const results=await Promise.all(matches.map(m=>fn(...m)));for(let i=matches.length-1;i>=0;i--){const m=matches[i];text=text.slice(0,m.index)+results[i]+text.slice(m.index+m[0].length);}return text;}
