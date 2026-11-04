@@ -37,7 +37,7 @@
           <div class="eyebrow" id="questStep">FRÅN INGENTING</div>
           <h3 id="questTitle">Dina första verktyg.</h3>
           <p id="quest">
-            Plocka grenar, småsten och fiber. Tillverka en stenyxa [C].
+            Plocka grenar, småsten och löv. Tillverka en stenyxa [E].
           </p>
           <div class="questline"><i id="questProgress"></i></div>
           <small id="biome">Södra stranden</small
@@ -47,16 +47,15 @@
         <div id="target"></div>
         <div id="notice" role="status"></div>
         <div id="buildHint" class="hidden">
-          R ROTERA · KLICK BYGG · 1 AVBRYT
+          T ROTERA · KLICK BYGG · VÄLJ EN TOM HOTBARPLATS FÖR ATT AVBRYTA
         </div>
         <div class="bottom">
-          <div id="inventory"></div>
           <div id="hotbar"></div>
           <div class="controls">
-            <span><kbd>W A S D</kbd> Gå</span
-            ><span><kbd>SHIFT</kbd> Spring</span
-            ><span><kbd>E</kbd> Interagera</span
-            ><span><kbd>C</kbd> Tillverka</span><span><kbd>F</kbd> Ät</span
+            <span><kbd>W A S D</kbd> Gå</span><span><kbd>R</kbd> Spring</span
+            ><span><kbd>F</kbd> Interagera</span
+            ><span><kbd>E</kbd> Inventarium</span
+            ><span><kbd>1–9</kbd> Hotbar</span
             ><span><kbd>SPACE</kbd> Hoppa</span>
           </div>
         </div>
@@ -79,7 +78,7 @@
             <span>◈ SAMLA & TILLVERKA</span><span>⌂ BYGG ETT HEM</span
             ><span>☾ JAGA & ÖVERLEV</span>
           </div>
-          <small>Mus + tangentbord · Esc pausar · C öppnar tillverkning</small>
+          <small>Mus + tangentbord · Esc pausar · E öppnar inventariet</small>
           <div class="menu-actions">
             <button id="reset" class="textbtn">Börja en ny överlevnad</button
             ><button id="quality" class="textbtn">Grafik: balanserad</button>
@@ -93,20 +92,49 @@
             <div class="eyebrow">FRÅN DINA EGNA HÄNDER</div>
             <h2>Packning & tillverkning</h2>
           </div>
-          <button id="closeCraft" class="subtle">TILLBAKA <kbd>C</kbd></button>
+          <button id="closeCraft" class="subtle">TILLBAKA <kbd>E</kbd></button>
         </div>
         <p class="workshop-intro">
-          Samla material. Tillverka verktyg. Välj en byggdel och placera den i
-          världen.
+          27 platser. Dina föremål, din packning. Receptboken finns till
+          vänster.
         </p>
-        <div id="bag"></div>
-        <nav id="craftTabs">
-          <button data-tab="tools" class="active">Verktyg</button
-          ><button data-tab="build">Läger & byggande</button
-          ><button data-tab="food">Mat & smältning</button>
-        </nav>
-        <div id="stationStatus"></div>
-        <div id="recipes"></div>
+        <div class="inventory-layout">
+          <aside class="recipe-book">
+            <h3>Receptbok</h3>
+            <nav id="craftTabs">
+              <button data-tab="tools" class="active">Verktyg</button
+              ><button data-tab="build">Byggande</button
+              ><button data-tab="food">Mat & järn</button>
+            </nav>
+            <div id="stationStatus"></div>
+            <div id="recipes"></div>
+          </aside>
+          <div class="pack">
+            <div class="pack-heading">
+              <h3>Inventarium</h3>
+              <span id="bagCapacity">0 / 27 platser</span>
+            </div>
+            <div id="bag"></div>
+            <p class="inventory-guide">
+              Nedersta raden är din hotbar (1–9). Dra föremål, eller klicka på
+              två platser för att flytta/byta. Shift-klick flyttar till/från
+              hotbaren. Staplar: 64. Verktyg: 1 per plats.
+            </p>
+            <button id="recoverItems" class="subtle hidden"></button>
+            <div class="inventory-legend">
+              <b>Material i recept</b>
+              <p>
+                Grenar, tallträ, björkträ och ekträ kan användas som trä.
+                Småsten, kalksten, granit och basalt kan användas som sten.
+              </p>
+              <b>Nycklar</b>
+              <p>
+                R spring · F interagera · E inventarium · T rotera bygge ·
+                högerklick ät vald mat
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
       <section id="storage" class="panel hidden">
         <div class="eyebrow">DITT LÄGER</div>
@@ -119,31 +147,37 @@
         <div class="eyebrow">LÄR KÄNNA ÖN</div>
         <h2>Från tomma händer till ett hem.</h2>
         <p>
-          <b>Börja på marken:</b> grenar, småsten, fiber och bär kan plockas med
-          E. Du har inga verktyg från början. Träd kan bearbetas för hand, men
-          en yxa ger mer trä.
+          <b>Första verktyget:</b> plocka grenar, småsten och löv med F. Träd
+          ger ingenting med händerna. Öppna E och tillverka en yxa i receptboken
+          till vänster.
         </p>
         <p>
-          <b>C — tillverka:</b> gör en yxa, en hacka och ett spjut. Stora stenar
-          och järnmalm kräver hacka. Välj en byggdel i menyn och klicka på
-          marken för att bygga; R roterar. Material dras först när bygget
-          placeras.
+          <b>Packning:</b> 27 platser totalt, varav nio hotbarplatser i nedersta
+          raden. Material staplas till 64, verktyg tar en plats var. Dra, klicka
+          två platser eller Shift-klicka för att ordna föremål. En full packning
+          lämnar insamlingen kvar i världen.
         </p>
         <p>
-          <b>Överlev:</b> F äter mat. Drick sötvatten med E vid källan väster om
-          stranden. Jaga hjortar med spjutet och stek köttet vid en lägereld.
-          Eldar skrämmer vargar och återställer hälsa.
+          <b>Insamling:</b> tall, björk och ek kräver yxa; kalksten, granit,
+          basalt och järnmalm kräver hacka. Olika sorter håller olika länge och
+          ger olika mycket material. Hållbarheten syns när du siktar. Skador på
+          resurser sparas.
         </p>
         <p>
-          <b>Utveckla lägret:</b> arbetsbänken låser upp smältugnen och
-          järnyxan. Bränn träkol vid elden och smält malm med kolet i ugnen.
-          Förvara resurser i kistor. Sov till morgonen på en sovplats om inga
-          vargar är nära.
+          <b>Bygg:</b> tillverka byggdelen i receptboken; den blir ett föremål i
+          packningen. Välj den i hotbaren och klicka på torr mark. T roterar.
+          Själva byggföremålet förbrukas vid placering.
         </p>
         <p>
-          WASD går · musen tittar · Shift springer · mellanslag hoppar · 1–5
-          byter verktyg · E interagerar · C tillverkar · M växlar karta · Esc
-          pausar. Framsteg sparas i den här webbläsaren.
+          <b>Överlev:</b> lägg mat i hotbaren och högerklicka för att äta. F
+          dricker vid sötvattenskällan och använder stationer, kistor, dörrar
+          och sovplatser. Arbetsbänk, smältugn och lägereld låser upp sina
+          recept i närheten.
+        </p>
+        <p>
+          WASD går · R springer · mellanslag hoppar · 1–9 väljer hotbarplats · F
+          interagerar · E öppnar inventariet · T roterar · M växlar karta · Esc
+          pausar.
         </p>
         <button id="closeHelp" class="primary">Tillbaka till ön</button>
       </section>

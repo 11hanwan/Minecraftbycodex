@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { variants } from "./progression.js";
 import { heightAt, seededRandom } from "./survival.js";
 export function createWorld(scene) {
   const rand = seededRandom(4239),
@@ -40,7 +41,7 @@ export function createWorld(scene) {
     rock: material("#8f9183"),
     ore: material("#af7953", { metalness: 0.28 }),
     wood: material("#a78a60", { map: barkTexture }),
-    fiber: material("#739850"),
+    leaves: material("#739850"),
     berry: material("#c75442"),
     skin: material("#bf9c79"),
     sand: material("#d6c393"),
@@ -140,11 +141,38 @@ export function createWorld(scene) {
       g = new THREE.Group();
     g.position.set(x, y, z);
     scene.add(g);
+    let variant =
+      kind === "stone"
+        ? ["limestone", "granite", "basalt"][id % 3]
+        : kind === "ore"
+          ? "ore"
+          : null;
     const scale = 0.8 + rand() * 0.5;
     g.rotation.y = rand() * Math.PI * 2;
     if (kind === "wood" && !pickup) {
       mesh(trunkGeo, mats.bark, 0, 2.1, 0, g);
       const pine = z < -10 && rand() > 0.35;
+      variant = pine ? "pine" : id % 2 ? "birch" : "oak";
+      const trunk = g.children[0];
+      if (variant === "birch") {
+        trunk.material = mats.bark.clone();
+        trunk.material.color.set("#e0dbc7");
+        for (let ring = 0; ring < 7; ring++) {
+          const stripe = mesh(
+            new THREE.CylinderGeometry(
+              0.51 - ((0.7 + ring * 0.45) / 4.6) * 0.28,
+              0.51 - ((0.7 + ring * 0.45) / 4.6) * 0.28,
+              0.055,
+              9,
+            ),
+            mats.bark,
+            0,
+            0.5 + ring * 0.45,
+            0,
+            g,
+          );
+        }
+      }
       if (pine) {
         for (let j = 0; j < 3; j++) {
           const canopy = mesh(
@@ -180,7 +208,9 @@ export function createWorld(scene) {
         );
         branch.rotation.z = -0.7;
       }
-      g.scale.setScalar(scale);
+      g.scale.setScalar(
+        scale * (variant === "oak" ? 1.2 : variant === "birch" ? 0.9 : 1),
+      );
     } else if (kind === "wood") {
       const branch = mesh(
         new THREE.CylinderGeometry(0.055, 0.09, 1.3, 6),
@@ -214,6 +244,19 @@ export function createWorld(scene) {
         pickup ? 0.15 : 1,
         pickup ? 0.29 : 1.15,
       );
+      if (!pickup && kind === "stone") {
+        rock.material = mats.rock.clone();
+        rock.material.color.set(
+          variant === "limestone"
+            ? "#c7bea4"
+            : variant === "granite"
+              ? "#92958d"
+              : "#454e50",
+        );
+        rock.scale.multiplyScalar(
+          variant === "basalt" ? 1.35 : variant === "limestone" ? 0.85 : 1.1,
+        );
+      }
       if (kind === "ore")
         for (let j = 0; j < 7; j++) {
           const a = j * 0.9;
@@ -227,19 +270,19 @@ export function createWorld(scene) {
           );
           crystal.scale.set(0.22, 0.15, 0.25);
         }
-    } else if (kind === "fiber") {
-      for (let j = 0; j < 4; j++) {
-        const a = j * 1.5;
+    } else if (kind === "leaves") {
+      for (let j = 0; j < 6; j++) {
+        const angle = j * 2.4;
         const leaf = mesh(
-          new THREE.ConeGeometry(0.3, 1.5, 4),
-          mats.fiber,
-          Math.cos(a) * 0.18,
-          0.5,
-          Math.sin(a) * 0.18,
+          new THREE.SphereGeometry(1, 7, 5),
+          mats.leaves,
+          Math.cos(angle) * 0.24,
+          pickup ? 0.08 : 0.3 + j * 0.1,
+          Math.sin(angle) * 0.24,
           g,
         );
-        leaf.rotation.z = Math.sin(a) * 0.5;
-        leaf.rotation.x = Math.cos(a) * 0.4;
+        leaf.scale.set(0.33, 0.035, 0.16);
+        leaf.rotation.set(pickup ? 0.1 : 0.3, angle, pickup ? 0.1 : 0.4);
       }
     } else if (kind === "berries") {
       for (let j = 0; j < 3; j++) {
@@ -270,15 +313,21 @@ export function createWorld(scene) {
       kind,
       pickup,
       group: g,
-      hp: pickup
-        ? 1
-        : kind === "wood"
-          ? 6
+      variant,
+      collisionRadius:
+        kind === "wood"
+          ? 0.5 * g.scale.x + 0.2
           : kind === "stone"
-            ? 5
-            : kind === "ore"
-              ? 7
-              : 2,
+            ? 1.3 *
+                (variant === "basalt"
+                  ? 1.35
+                  : variant === "limestone"
+                    ? 0.85
+                    : 1.1) +
+              0.2
+            : 1.3,
+      maxHp: pickup ? 1 : variants[variant]?.hp || 2,
+      hp: pickup ? 1 : variants[variant]?.hp || 2,
       alive: true,
     };
     g.traverse((o) => {
@@ -297,7 +346,7 @@ export function createWorld(scene) {
     if (heightAt(x, z) > 2.3)
       addResource(
         id++,
-        i % 3 === 0 ? "fiber" : i % 2 ? "wood" : "stone",
+        i % 3 === 0 ? "leaves" : i % 2 ? "wood" : "stone",
         x,
         z,
         true,
@@ -321,7 +370,7 @@ export function createWorld(scene) {
           : i % 7 === 0
             ? "berries"
             : i % 5 === 0
-              ? "fiber"
+              ? "leaves"
               : "wood";
     addResource(id++, kind, x, z, false);
   }
@@ -331,7 +380,7 @@ export function createWorld(scene) {
     if (heightAt(x, z) > 2.4 && Math.hypot(x + 12, z - 8) > 6)
       addResource(
         id++,
-        i % 3 === 0 ? "fiber" : i % 2 ? "wood" : "stone",
+        i % 3 === 0 ? "leaves" : i % 2 ? "wood" : "stone",
         x,
         z,
         true,

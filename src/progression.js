@@ -1,42 +1,33 @@
 // Shared survival rules. Inventory starts empty; tools must be crafted.
-export const resourceNames = {
-  wood: "trä",
-  stone: "sten",
-  fiber: "fiber",
-  berries: "bär",
-  ore: "järnmalm",
-  metal: "järn",
-  rawMeat: "rått kött",
-  meat: "stekt kött",
-  coal: "träkol",
-};
+import { resourceNames, emptyInventory, count, transact } from "./inventory.js";
+export { resourceNames, emptyInventory };
 export const items = {
   axe: {
     name: "Stenyxa",
     icon: "🪓",
     description: "Hugg träd snabbare och få mer trä med färre slag.",
-    cost: { wood: 4, stone: 3, fiber: 2 },
+    cost: { wood: 4, stone: 3, leaves: 2 },
     tool: true,
   },
   pickaxe: {
     name: "Stenhacka",
     icon: "⛏",
     description: "Bryt sten och järnmalm i bergen.",
-    cost: { wood: 4, stone: 5, fiber: 2 },
+    cost: { wood: 4, stone: 5, leaves: 2 },
     tool: true,
   },
   spear: {
     name: "Träspjut",
     icon: "↟",
     description: "Jaga djur och försvara dig på avstånd.",
-    cost: { wood: 6, stone: 2, fiber: 3 },
+    cost: { wood: 6, stone: 2, leaves: 3 },
     tool: true,
   },
   ironAxe: {
     name: "Järnyxa",
     icon: "🪓",
     description: "Ett slitstarkt verktyg för stora skördar.",
-    cost: { wood: 4, metal: 4, fiber: 2 },
+    cost: { wood: 4, metal: 4, leaves: 2 },
     station: "bench",
     tool: true,
   },
@@ -51,7 +42,7 @@ export const items = {
     name: "Arbetsbänk",
     icon: "⚒",
     description: "Låser upp järnverktyg och avancerade byggen.",
-    cost: { wood: 14, stone: 6, fiber: 4 },
+    cost: { wood: 14, stone: 6, leaves: 4 },
     build: true,
   },
   furnace: {
@@ -66,7 +57,7 @@ export const items = {
     name: "Trävägg",
     icon: "▥",
     description: "En stadig vägg till ditt skydd.",
-    cost: { wood: 6, fiber: 2 },
+    cost: { wood: 6, leaves: 2 },
     build: true,
   },
   floor: {
@@ -80,14 +71,14 @@ export const items = {
     name: "Tak",
     icon: "⌂",
     description: "Komplettera ditt skydd med ett halmtak.",
-    cost: { wood: 5, fiber: 6 },
+    cost: { wood: 5, leaves: 6 },
     build: true,
   },
   door: {
     name: "Dörr",
     icon: "▯",
-    description: "Öppna och stäng med E.",
-    cost: { wood: 8, fiber: 3 },
+    description: "Öppna och stäng med F.",
+    cost: { wood: 8, leaves: 3 },
     build: true,
   },
   chest: {
@@ -101,7 +92,7 @@ export const items = {
     name: "Sovplats",
     icon: "▰",
     description: "Sov till morgonen när lägret är tryggt.",
-    cost: { wood: 6, fiber: 12 },
+    cost: { wood: 6, leaves: 12 },
     build: true,
   },
   meat: {
@@ -129,58 +120,57 @@ export const items = {
     output: { metal: 1 },
   },
 };
-export function emptyInventory() {
-  return Object.fromEntries(Object.keys(resourceNames).map((k) => [k, 0]));
-}
+
 export function craftStatus(inventory, owned, id, stations = []) {
   const recipe = items[id];
   if (!recipe) return { ok: false, reason: "Okänt recept" };
-  if (recipe.tool && owned.includes(id))
-    return { ok: false, reason: "Redan tillverkad" };
   if (recipe.station && !stations.includes(recipe.station))
     return {
       ok: false,
       reason: `Kräver ${items[recipe.station].name.toLowerCase()} i närheten`,
     };
-  if (
-    !Object.entries(recipe.cost).every(
-      ([key, count]) => (inventory[key] || 0) >= count,
-    )
-  )
-    return { ok: false, reason: "Du saknar resurser" };
-  return { ok: true, reason: "" };
+  return transact(inventory, recipe.cost, recipe.output || { [id]: 1 });
 }
 export function makeItem(inventory, owned, id, stations = []) {
   const status = craftStatus(inventory, owned, id, stations);
   if (!status.ok) return status;
-  const recipe = items[id];
-  for (const [key, count] of Object.entries(recipe.cost))
-    inventory[key] -= count;
-  if (recipe.tool) owned.push(id);
-  for (const [key, count] of Object.entries(recipe.output || {}))
-    inventory[key] += count;
-  return { ok: true, build: !!recipe.build };
+  inventory.splice(0, inventory.length, ...status.slots);
+  return { ok: true, build: !!items[id].build };
 }
-export function gatherRule(kind, tool = "hands") {
+export const variants = {
+  pine: { name: "Tall", hp: 18, amount: 10, drop: "pineWood" },
+  birch: { name: "Björk", hp: 26, amount: 16, drop: "birchWood" },
+  oak: { name: "Ek", hp: 38, amount: 24, drop: "oakWood" },
+  limestone: { name: "Kalksten", hp: 22, amount: 12, drop: "limestone" },
+  granite: { name: "Granit", hp: 36, amount: 18, drop: "granite" },
+  basalt: { name: "Basalt", hp: 50, amount: 26, drop: "basalt" },
+  ore: { name: "Järnåder", hp: 40, amount: 8, drop: "ore" },
+};
+export function gatherRule(kind, tool = "hands", variant) {
+  const definition =
+    variants[variant] ||
+    variants[kind === "wood" ? "pine" : kind === "stone" ? "limestone" : "ore"];
   if (kind === "wood")
     return {
-      allowed: true,
-      damage: tool === "ironAxe" ? 4 : tool === "axe" ? 2 : 1,
-      amount: tool === "ironAxe" ? 12 : tool === "axe" ? 8 : 3,
+      allowed: tool === "axe" || tool === "ironAxe",
+      damage: tool === "ironAxe" ? 5 : 2,
+      amount: definition.amount,
+      drop: definition.drop,
+      reason:
+        "Du behöver en yxa. Plocka grenar, småsten och löv från marken för att tillverka en.",
     };
-  if (kind === "stone")
+  if (kind === "stone" || kind === "ore")
     return {
       allowed: tool === "pickaxe",
       damage: 2,
-      amount: 6,
-      reason: "Tillverka en stenhacka. Småsten på marken kan plockas för hand.",
+      amount: definition.amount,
+      drop: definition.drop,
+      reason: "Du behöver en hacka. Småsten på marken kan plockas för hand.",
     };
-  if (kind === "ore")
-    return {
-      allowed: tool === "pickaxe",
-      damage: 1,
-      amount: 4,
-      reason: "Du behöver en stenhacka för järnmalm.",
-    };
-  return { allowed: true, damage: 1, amount: kind === "fiber" ? 4 : 3 };
+  return {
+    allowed: true,
+    damage: 1,
+    amount: kind === "leaves" ? 4 : 3,
+    drop: kind,
+  };
 }

@@ -8,25 +8,45 @@ När GitHub Pages-publiceringen lyckats: **https://11hanwan.github.io/Minecraftb
 
 Klicka på **Börja tomhänt**. Använd mus och tangentbord. Du behöver ingen terminal eller Linux för att spela den publicerade versionen. Esc pausar och släpper muspekaren. Välj **Grafik: låg** i pausmenyn om datorn har svårt att hålla jämn bildfrekvens.
 
+## Inventarium och kontroller
+
+**27 platser totalt**: två packningsrader och en tredje rad med nio hotbarplatser. Hotbaren visar bara föremål du faktiskt har. Den börjar tom. Material staplas till 64, verktyg tar en plats var. Olika trä- och stensorter ligger i separata staplar. Föremål flyttas med drag och släpp eller genom att klicka på källplatsen och sedan målplatsen. Shift-klick flyttar till/från hotbaren. Inga resursräknare visas ovanför hotbaren.
+
+- **WASD:** gå. **R (håll):** spring. **Mellanslag:** hoppa.
+- **F:** plocka från marken, drick och använd stationer, dörrar, kistor och sovplatser.
+- **E:** öppna/stäng inventariet och receptboken till vänster.
+- **1–9:** välj hotbarplats. **Vänsterklick:** använd verktyget eller placera vald byggdel.
+- **T:** rotera byggdelen. **Högerklick:** ät bär eller stekt kött i vald hotbarplats.
+- **B:** öppna byggrecept. **M:** karta. **H:** hjälp. **Esc:** paus.
+
+Tillverkade verktyg och byggdelar är riktiga föremål som tar plats. De läggs i en ledig hotbarplats när det går. Byggmaterial betalas när byggföremålet tillverkas; vid placering förbrukas det föremålet, utan ytterligare materialkostnad. En full packning stoppar insamling och tillverkning utan att radera material. Ingredienser som används upp kan frigöra plats för tillverkningsresultatet.
+
 ## Från strand till läger
 
-1. Plocka grenar, småsten och fiber på marken med **E**. Plocka bär för mat. Du kan även bearbeta träd för hand, men det tar längre tid och ger mindre trä.
-2. Öppna **C** och tillverka en stenyxa (4 trä, 3 sten, 2 fiber). Tillverka därefter en hacka för sten och järnmalm, och ett spjut för jakt.
-3. Bygg en lägereld via **C → Läger & byggande**. Välj en byggdel, sikta ned på torr mark 2–6 meter framför dig och vänsterklicka. **R** roterar; **1** avbryter byggläget. Material förbrukas först vid placering.
-4. Drick sötvatten med **E** nära källan väster om startstranden. **F** äter stekt kött eller bär. Jaga hjortar med spjut och stek köttet vid en lägereld. Rått kött äts inte automatiskt.
-5. Bygg ett skydd med grund, väggar, dörr och tak. Dörrar öppnas med E. Eldar skrämmer vargar och återställer hälsa om du inte svälter eller är uttorkad.
-6. Bygg en arbetsbänk, därefter en smältugn nära bänken. Bränn träkol vid elden och smält sedan järnmalm med träkol i ugnen. Tillverka en järnyxa vid bänken för effektivare insamling.
-7. Lägg resurser i kistor med **E** och använd en sovplats för att hoppa till morgonen när inga vargar är nära. Samlade resurser växer fram igen efter en tid.
+1. Plocka **grenar, småsten och löv** med F. Öppna E och tillverka första stenyxan (4 trä, 3 sten, 2 löv). Du kan **inte** skada eller få något från stående träd med händerna, spjut eller hacka.
+2. Hugg med yxan och bryt med hackan. Trä av alla sorter kan användas som trä i recept, och sten av alla sorter räknas som sten. Sorterna skiljer sig i utseende, hållbarhet och mängd material:
 
-**Styrning:** WASD går · musen tittar · Shift springer · mellanslag hoppar · 1 händer · 2 yxa · 3 hacka · 4 spjut · 5 järnyxa · E interagerar · C tillverkar · B öppnar byggrecept · F äter · M växlar karta · H öppnar hjälp.
+| Resurs   | Hållbarhet | Dropp vid förstöring |
+| -------- | ---------: | -------------------- |
+| Tall     |         18 | 10 tallträ           |
+| Björk    |         26 | 16 björkträ          |
+| Ek       |         38 | 24 ekträ             |
+| Kalksten |         22 | 12 kalksten          |
+| Granit   |         36 | 18 granit            |
+| Basalt   |         50 | 26 basalt            |
+| Järnåder |         40 | 8 järnmalm           |
 
-Sju överlevnadsmål guidar progressionen. Det finns dag/natt, hunger, törst, uthållighet, hjortar och nattliga vargar. Nio resurstyper och sexton recept ingår. Arbetsstationer måste finnas inom sju meter för sina recept. Lägerdelar placeras fritt på ett tvåmetersrutnät; världen består inte av redigerbara voxelblock.
+Stenyxan/hackan gör 2 skada per slag; järnyxan gör 5. Hållbarheten visas när du siktar, och skador sparas vid vanlig sparning. Markföremål plockas direkt utan verktyg. Löv ersätter växtfiber både i världen och i recepten.
 
-## Sparning
+3. Tillverka en lägereld och välj den i hotbaren för att bygga. Lägg till grund, väggar, dörr, tak, kista och sovplats.
+4. Drick sötvatten vid källan väster om startstranden. Jaga hjortar med spjut och stek kött vid en eld. Lägg maten i hotbaren och högerklicka för att äta.
+5. Bygg en arbetsbänk och en smältugn, bränn träkol vid elden och smält järnmalm. Tillverka en järnyxa vid bänken.
 
-Framsteg sparas lokalt i webbläsaren: resurser, tillverkade verktyg, position, dygn, byggnader, dörrars läge, kistors innehåll och tid för återväxt. Nyckeln är `vildmark-strandad-v2`. Den gamla prototypens sparning lämnas orörd, men används inte i den nya versionen: den nya progressionen börjar tomhänt. **Börja en ny överlevnad** tar bort den aktuella sparningen. Vid död börjar du om.
+Stationer måste finnas inom sju meter för sina recept. Lägerdelar placeras på ett tvåmetersrutnät. Det finns dygn, hunger, törst, uthållighet, hjortar, nattliga vargar, återväxt och sju överlevnadsmål. Spelet är enspelarläge med egen kod och procedurgenererade tillgångar.
 
-Det här är ett enspelarspel. Multiplayer och den fullständiga funktionsmängden i Tribals.io ingår inte. Spelet använder egen kod och procedurgenererade modeller och texturer, inga tillgångar hämtade från Tribals.io.
+## Sparningar
+
+Nyckeln `vildmark-strandad-v2` behålls, men formatversionen är nu 3. Äldre sparningar konverteras automatiskt till platser: fiber blir löv, material delas upp i staplar och tidigare verktyg blir föremål. Om en äldre packning är för stor visas **Hämta tidigare sparade föremål**; överskottet bevaras tills du frigör plats. Hotbarens ordning, vald plats, byggnader, kistor, resursers skador och återväxt sparas. **Börja en ny överlevnad** återställer aktuell sparning. Vid död börjar du om.
 
 ## Utveckla
 
@@ -37,7 +57,7 @@ npm ci
 npm run dev
 ```
 
-`npm test` kör sju tester för tomhänt start, verktygsprogression, stationskrav, resurskostnader och terräng. `npm run build` skapar produktionsversionen i `dist/`; `npm run preview` visar den lokalt. `src/progression.js` innehåller recept och insamlingsregler, `src/world.js` skapar världen och `src/main.js` hanterar spelet.
+`npm test` kontrollerar slotkapacitet, staplar, flytt/byte, tillverkning, sparningsmigration, resurssorter, verktygskrav och terräng. `npm run build` skapar produktionsversionen i `dist/`; `npm run preview` visar den lokalt. `src/inventory.js` hanterar platser och transaktioner, `src/progression.js` innehåller recept och insamlingsregler, `src/world.js` skapar världen och `src/main.js` hanterar spelet.
 
 ## Publicering
 

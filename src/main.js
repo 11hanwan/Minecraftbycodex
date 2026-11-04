@@ -8,8 +8,21 @@ import {
   craftStatus,
   makeItem,
   gatherRule,
+  variants,
 } from "./progression.js";
 import { createWorld } from "./world.js";
+import {
+  HOTBAR_START,
+  icons,
+  count,
+  exactCount,
+  collect,
+  addItems,
+  removeItems,
+  moveSlot,
+  normalizeInventory,
+  TOOL_IDS,
+} from "./inventory.js";
 const $ = (id) => document.getElementById(id),
   SAVE_KEY = "vildmark-strandad-v2",
   rand = seededRandom(981);
@@ -67,9 +80,20 @@ const state = {
   day: 1,
   elapsed: 0,
   inventory: emptyInventory(),
-  tools: [],
+  hotSlot: 0,
+  overflow: {},
   kills: 0,
 };
+Object.defineProperty(state, "tools", {
+  get: () => [
+    ...new Set(
+      state.inventory
+        .filter(Boolean)
+        .map((s) => s.id)
+        .filter((id) => TOOL_IDS.includes(id)),
+    ),
+  ],
+});
 const player = {
   position: new THREE.Vector3(3, heightAt(3, 17) + 1.7, 17),
   yaw: 0,
@@ -197,33 +221,116 @@ function handModel() {
     }
   });
 }
-const hotItems = [
-  ["hands", "HÄNDER", "✋"],
-  ["axe", "YXA", "🪓"],
-  ["pickaxe", "HACKA", "⛏"],
-  ["spear", "SPJUT", "↟"],
-  ["ironAxe", "JÄRNYXA", "⚒"],
-];
+
+let movingSlot = null;
+const itemName = (id) => items[id]?.name || resourceNames[id] || id;
+function slotHTML(slot, index, hotbar = false) {
+  return `<button class="inventory-slot ${hotbar && state.hotSlot === index - HOTBAR_START ? "active" : ""} ${movingSlot === index ? "moving" : ""}" data-slot="${index}" draggable="${!!slot}" title="${slot ? itemName(slot.id) + " · " + slot.count : "Tom plats"}">${hotbar ? `<span class="number">${index - HOTBAR_START + 1}</span>` : ""}${slot ? `<span class="item-icon item-${slot.id}">${icons[slot.id] || "◆"}</span>${slot.count > 1 ? `<b class="stack-count">${slot.count}</b>` : ""}` : ""}</button>`;
+}
 function renderHotbar() {
-  $("hotbar").innerHTML = hotItems
-    .map(
-      ([id, name, icon], i) =>
-        `<div class="slot ${selected === id ? "active" : ""} ${id !== "hands" && !state.tools.includes(id) ? "locked" : ""}"><span class="number">${i + 1}</span><span class="icon">${icon}</span><span class="name">${name}</span><span class="cost">${id === "hands" ? "TOMHÄNT" : state.tools.includes(id) ? "TILLVERKAD" : "LÅST · C"}</span></div>`,
-    )
+  $("hotbar").innerHTML = state.inventory
+    .slice(HOTBAR_START)
+    .map((slot, i) => slotHTML(slot, i + HOTBAR_START, true))
     .join("");
 }
-function select(id) {
-  if (id !== "hands" && !state.tools.includes(id)) {
-    notice("Tillverka verktyget först [C].");
-    return;
-  }
-  selected = id;
-  blueprint = null;
-  $("buildHint").classList.add("hidden");
-  hand.visible = true;
-  handModel();
+function select(index) {
+  state.hotSlot = index;
+  updateEquipped();
   renderHotbar();
 }
+function updateEquipped() {
+  const id = state.inventory[HOTBAR_START + state.hotSlot]?.id || "hands";
+  const changed = selected !== id;
+  selected = id;
+  blueprint = items[id]?.build ? id : null;
+  $("buildHint").classList.toggle("hidden", !blueprint);
+  if (changed) handModel();
+}
+function receive(output) {
+  const result = collect(state.inventory, output);
+  if (result.ok) {
+    updateEquipped();
+    renderHotbar();
+  } else notice(result.reason);
+  return result.ok;
+}
+function equipNewItem(id) {
+  const source = state.inventory.findIndex((s) => s?.id === id);
+  if (source < 0) return;
+  let target =
+    source >= HOTBAR_START
+      ? source
+      : state.inventory.findIndex((s, i) => i >= HOTBAR_START && !s);
+  if (target < 0) return;
+  if (target !== source) moveSlot(state.inventory, source, target);
+  select(target - HOTBAR_START);
+}
+function renderBag() {
+  $("bag").innerHTML = state.inventory
+    .map((slot, i) => slotHTML(slot, i, i >= HOTBAR_START))
+    .join("");
+  $("bagCapacity").textContent =
+    `${state.inventory.filter(Boolean).length} / 27 platser`;
+  const pending = Object.values(state.overflow).reduce((a, n) => a + n, 0);
+  $("recoverItems").classList.toggle("hidden", !pending);
+  $("recoverItems").textContent = `Hämta tidigare sparade föremål (${pending})`;
+}
+function inventoryClick(e) {
+  const slot = e.target.closest("[data-slot]");
+  if (!slot) return;
+  const index = +slot.dataset.slot;
+  if (e.shiftKey) {
+    if (state.inventory[index]) {
+      const target = state.inventory.findIndex(
+        (s, i) =>
+          !s && (index < HOTBAR_START ? i >= HOTBAR_START : i < HOTBAR_START),
+      );
+      if (target >= 0) moveSlot(state.inventory, index, target);
+    }
+    movingSlot = null;
+  } else if (movingSlot === null) {
+    if (state.inventory[index]) movingSlot = index;
+  } else {
+    moveSlot(state.inventory, movingSlot, index);
+    movingSlot = null;
+  }
+  updateEquipped();
+  renderCrafting();
+  renderHotbar();
+  save();
+}
+$("bag").onclick = inventoryClick;
+$("bag").ondragstart = (e) => {
+  const slot = e.target.closest("[data-slot]");
+  if (slot && state.inventory[+slot.dataset.slot]) {
+    movingSlot = +slot.dataset.slot;
+    e.dataTransfer.setData("text/plain", slot.dataset.slot);
+  }
+};
+$("bag").ondragover = (e) => e.preventDefault();
+$("bag").ondrop = (e) => {
+  e.preventDefault();
+  const target = e.target.closest("[data-slot]");
+  if (target && movingSlot !== null) {
+    moveSlot(state.inventory, movingSlot, +target.dataset.slot);
+    movingSlot = null;
+    updateEquipped();
+    renderCrafting();
+    renderHotbar();
+    save();
+  }
+};
+$("recoverItems").onclick = () => {
+  for (const [id, n] of Object.entries(state.overflow)) {
+    const left = addItems(state.inventory, id, n);
+    if (left) state.overflow[id] = left;
+    else delete state.overflow[id];
+  }
+  updateEquipped();
+  renderHotbar();
+  renderCrafting();
+  save();
+};
 function notice(text) {
   $("notice").textContent = text;
   clearTimeout(notice.timer);
@@ -265,17 +372,10 @@ function nearbyStations() {
     ),
   ];
 }
-function costLabel(cost) {
-  return Object.entries(cost)
-    .map(([key, n]) => `${n} ${resourceNames[key]}`)
-    .join(" · ");
-}
 function renderCrafting() {
   const inv = state.inventory,
     stations = nearbyStations();
-  $("bag").innerHTML = Object.entries(resourceNames)
-    .map(([id, name]) => `<div><b>${inv[id]}</b><span>${name}</span></div>`)
-    .join("");
+  renderBag();
   $("stationStatus").textContent = stations.length
     ? "Nära: " +
       [...new Set(stations)]
@@ -301,11 +401,11 @@ function renderCrafting() {
       )
         .map(
           ([key, n]) =>
-            `<span class="${inv[key] >= n ? "enough" : "missing"}">${inv[key]}/${n} ${resourceNames[key]}</span>`,
+            `<span class="${count(inv, key) >= n ? "enough" : "missing"}">${count(inv, key)}/${n} ${key === "wood" ? "trä" : key === "stone" ? "sten" : resourceNames[key]}</span>`,
         )
         .join(
           "",
-        )}</div><button data-recipe="${id}" ${status.ok ? "" : "disabled"}>${status.ok ? (item.build ? "Välj bygge" : "Tillverka") : status.reason}</button></article>`;
+        )}</div><button data-recipe="${id}" ${status.ok ? "" : "disabled"}>${status.ok ? "Tillverka" : status.reason}</button></article>`;
     })
     .join("");
 }
@@ -316,22 +416,13 @@ function chooseRecipe(id) {
     notice(status.reason);
     return;
   }
-  if (item.build) {
-    blueprint = id;
-    hand.visible = false;
-    renderHotbar();
-    $("buildHint").classList.remove("hidden");
-    closePanels();
-    notice(`${item.name} · ${costLabel(item.cost)} · R roterar`);
-  } else {
-    makeItem(state.inventory, state.tools, id, nearbyStations());
-    notice(`${item.name} tillverkad.`);
-    if (item.tool) {
-      select(id);
-    }
-    renderCrafting();
-    save();
-  }
+  makeItem(state.inventory, state.tools, id, nearbyStations());
+  notice(`${item.name} tillverkad.`);
+  if (item.tool || item.build) equipNewItem(id);
+  updateEquipped();
+  renderHotbar();
+  renderCrafting();
+  save();
 }
 $("recipes").onclick = (e) => {
   const button = e.target.closest("[data-recipe]");
@@ -397,7 +488,7 @@ function addBuilding(type, x, y, z, rot = 0, extra = {}) {
   }
   if (type === "roof") {
     for (const sign of [-1, 1]) {
-      const r = board(1.4, 0.18, 2.3, sign * 0.5, 2.75, 0, mats.fiber);
+      const r = board(1.4, 0.18, 2.3, sign * 0.5, 2.75, 0, mats.leaves);
       r.rotation.z = sign * -0.48;
     }
   }
@@ -507,9 +598,10 @@ function addBuilding(type, x, y, z, rot = 0, extra = {}) {
   if (type === "bed") {
     board(1.3, 0.16, 2, 0, 0.15, 0, mats.bark);
     for (let i = 0; i < 6; i++)
-      board(0.21, 0.16, 1.8, -0.52 + i * 0.21, 0.3, 0, mats.fiber);
+      board(0.21, 0.16, 1.8, -0.52 + i * 0.21, 0.3, 0, mats.leaves);
     board(0.8, 0.14, 0.4, 0, 0.4, -0.6, mats.sand);
   }
+  const converted = normalizeInventory(extra.inventory);
   const b = {
     type,
     x,
@@ -518,7 +610,8 @@ function addBuilding(type, x, y, z, rot = 0, extra = {}) {
     rot,
     group,
     open: !!extra.open,
-    inventory: { ...emptyInventory(), ...extra.inventory },
+    inventory: converted.slots,
+    overflow: { ...extra.overflow, ...converted.overflow },
   };
   if (group.userData.door)
     group.userData.door.rotation.y = b.open ? -Math.PI / 2 : 0;
@@ -535,20 +628,26 @@ function save() {
     localStorage.setItem(
       SAVE_KEY,
       JSON.stringify({
-        version: 2,
+        version: 3,
         state,
         position: player.position.toArray(),
         yaw: player.yaw,
         selected,
-        buildings: buildings.map(({ type, x, y, z, rot, open, inventory }) => ({
-          type,
-          x,
-          y,
-          z,
-          rot,
-          open,
-          inventory,
-        })),
+        buildings: buildings.map(
+          ({ type, x, y, z, rot, open, inventory, overflow }) => ({
+            type,
+            x,
+            y,
+            z,
+            rot,
+            open,
+            inventory,
+            overflow,
+          }),
+        ),
+        resourceDamage: resources
+          .filter((r) => r.alive && r.hp < r.maxHp)
+          .map((r) => ({ id: r.id, hp: r.hp })),
         depleted: resources
           .filter((r) => !r.alive)
           .map((r) => ({ id: r.id, respawnAt: r.respawnAt })),
@@ -562,7 +661,7 @@ function save() {
 try {
   const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
   if (
-    saved?.version === 2 &&
+    [2, 3].includes(saved?.version) &&
     saved.position?.length === 3 &&
     saved.position.every(Number.isFinite)
   ) {
@@ -573,12 +672,12 @@ try {
     state.day = Math.max(1, Number(old.day) || 1);
     state.elapsed = Math.max(0, Number(old.elapsed) || 0);
     state.kills = Number(old.kills) || 0;
-    for (const k of Object.keys(resourceNames))
-      state.inventory[k] = Math.max(
-        0,
-        Math.floor(Number(old.inventory?.[k]) || 0),
-      );
-    state.tools = [...new Set((old.tools || []).filter((k) => items[k]?.tool))];
+    const migrated = normalizeInventory(old.inventory, old.tools || []);
+    state.inventory = migrated.slots;
+    state.overflow = { ...old.overflow, ...migrated.overflow };
+    state.hotSlot = Number.isInteger(old.hotSlot)
+      ? THREE.MathUtils.clamp(old.hotSlot, 0, 8)
+      : 0;
     player.position.fromArray(saved.position);
     player.position.x = THREE.MathUtils.clamp(player.position.x, -65, 65);
     player.position.z = THREE.MathUtils.clamp(player.position.z, -65, 65);
@@ -590,6 +689,11 @@ try {
     for (const b of saved.buildings || [])
       if (items[b.type]?.build && [b.x, b.y, b.z, b.rot].every(Number.isFinite))
         addBuilding(b.type, b.x, b.y, b.z, b.rot, b);
+    for (const d of saved.resourceDamage || []) {
+      const r = resources.find((r) => r.id === d.id);
+      if (r && Number.isFinite(d.hp))
+        r.hp = THREE.MathUtils.clamp(d.hp, 1, r.maxHp);
+    }
     for (const d of saved.depleted || []) {
       const r = resources.find((r) => r.id === d.id);
       if (r && d.respawnAt > state.elapsed) {
@@ -598,7 +702,7 @@ try {
         r.group.visible = false;
       }
     }
-    selected = state.tools.includes(saved.selected) ? saved.selected : "hands";
+    updateEquipped();
     $("play").innerHTML = "FORTSÄTT ÖVERLEVA <span>↗</span>";
   }
 } catch {
@@ -644,7 +748,7 @@ renderer.domElement.onclick = () => {
 };
 addEventListener("keydown", (e) => {
   if (["Space", "Tab"].includes(e.code)) e.preventDefault();
-  if (e.code === "KeyC" && !e.repeat) {
+  if (e.code === "KeyE" && !e.repeat) {
     if (panel === "crafting") closePanels();
     else if (played) openPanel("crafting");
     return;
@@ -660,10 +764,9 @@ addEventListener("keydown", (e) => {
   }
   if (!active()) return;
   keys.add(e.code);
-  if (/^Digit[1-5]$/.test(e.code)) select(hotItems[+e.code.slice(-1) - 1][0]);
-  if (e.code === "KeyE" && !e.repeat) interact();
-  if (e.code === "KeyF" && !e.repeat) eat();
-  if (e.code === "KeyR" && !e.repeat) rotation += Math.PI / 2;
+  if (/^Digit[1-9]$/.test(e.code)) select(+e.code.slice(-1) - 1);
+  if (e.code === "KeyF" && !e.repeat) interact();
+  if (e.code === "KeyT" && !e.repeat) rotation += Math.PI / 2;
   if (e.code === "KeyB" && !e.repeat) {
     tab = "build";
     openPanel("crafting");
@@ -688,6 +791,7 @@ addEventListener("mousemove", (e) => {
 });
 addEventListener("mousedown", (e) => {
   if (e.button === 0 && active()) use();
+  if (e.button === 2 && active()) eat();
 });
 addEventListener("contextmenu", (e) => e.preventDefault());
 function updateTarget() {
@@ -710,22 +814,24 @@ function updateTarget() {
   let text = "";
   if (target?.resource) {
     const r = target.resource;
-    const rule = r.pickup ? { allowed: true } : gatherRule(r.kind, selected);
+    const rule = r.pickup
+      ? { allowed: true }
+      : gatherRule(r.kind, selected, r.variant);
     text = r.pickup
-      ? `[E] Plocka ${resourceNames[r.kind]}`
+      ? `[F] Plocka ${resourceNames[r.kind]}`
       : rule.allowed
-        ? `[E / KLICK] ${r.kind === "wood" ? "Hugg träd" : r.kind === "fiber" ? "Samla fiber" : r.kind === "berries" ? "Plocka bär" : "Bryt " + resourceNames[r.kind]} · ${r.hp}`
+        ? `[KLICK] ${variants[r.variant]?.name || resourceNames[r.kind]} · ${r.hp}/${r.maxHp}`
         : rule.reason;
   } else if (target?.building) {
     const b = target.building;
-    text = `[E] ${b.type === "door" ? (b.open ? "Stäng dörr" : "Öppna dörr") : b.type === "water" ? "Drick sötvatten" : b.type === "bed" ? "Sov till morgonen" : items[b.type].name}`;
+    text = `[F] ${b.type === "door" ? (b.open ? "Stäng dörr" : "Öppna dörr") : b.type === "water" ? "Drick sötvatten" : b.type === "bed" ? "Sov till morgonen" : items[b.type].name}`;
   } else if (target?.animal)
     text =
       target.animal.kind === "deer"
         ? "Hjort · jaga med spjut"
         : "Varg · försvara dig";
   if (!target && Math.hypot(player.position.x + 12, player.position.z - 8) < 8)
-    text = "[E] Drick sötvatten";
+    text = "[F] Drick sötvatten";
   buildPoint = null;
   ghost.visible = false;
   if (blueprint) {
@@ -761,21 +867,14 @@ function updateTarget() {
           ghost.rotation.y = rotation;
           ghost.visible = true;
           ghost.material.color.set(
-            craftStatus(
-              state.inventory,
-              state.tools,
-              blueprint,
-              nearbyStations(),
-            ).ok
-              ? "#b7e0b6"
-              : "#e98c73",
+            count(state.inventory, blueprint) > 0 ? "#b7e0b6" : "#e98c73",
           );
         }
         break;
       }
     }
     text = buildPoint
-      ? `${items[blueprint].name} · ${costLabel(items[blueprint].cost)} · KLICK placera`
+      ? `${items[blueprint].name} · KLICK placera · T rotera`
       : "Sikta på torr mark 2–6 meter framför dig";
   }
   $("target").textContent = text;
@@ -785,8 +884,8 @@ function gather() {
   const r = target?.resource;
   if (!r) return;
   const rule = r.pickup
-    ? { allowed: true, damage: 1, amount: r.kind === "fiber" ? 2 : 1 }
-    : gatherRule(r.kind, selected);
+    ? { allowed: true, damage: 1, amount: r.kind === "leaves" ? 2 : 1 }
+    : gatherRule(r.kind, selected, r.variant);
   if (!rule.allowed) {
     notice(rule.reason);
     return;
@@ -794,18 +893,23 @@ function gather() {
   hitUntil =
     performance.now() + (r.pickup ? 180 : selected === "hands" ? 600 : 400);
   swing = 1;
+  if (r.hp <= rule.damage && !receive({ [rule.drop || r.kind]: rule.amount }))
+    return;
   r.hp -= rule.damage;
   r.group.rotation.z = 0.035;
   setTimeout(() => (r.group.rotation.z = 0), 110);
   if (r.hp <= 0) {
-    state.inventory[r.kind] += rule.amount;
     r.alive = false;
     r.group.visible = false;
     r.respawnAt =
       state.elapsed +
-      (r.pickup ? 220 : r.kind === "berries" || r.kind === "fiber" ? 160 : 650);
+      (r.pickup
+        ? 220
+        : r.kind === "berries" || r.kind === "leaves"
+          ? 160
+          : 650);
     renderer.shadowMap.needsUpdate = true;
-    notice(`+${rule.amount} ${resourceNames[r.kind]}`);
+    notice(`+${rule.amount} ${resourceNames[rule.drop || r.kind]}`);
     save();
     target = null;
   }
@@ -813,7 +917,12 @@ function gather() {
 function interact() {
   if (blueprint) return;
   if (target?.resource) {
-    gather();
+    if (
+      target.resource.pickup ||
+      ["leaves", "berries"].includes(target.resource.kind)
+    )
+      gather();
+    else notice("Använd vänsterklick med rätt verktyg.");
     return;
   }
   if (target?.building) {
@@ -874,27 +983,37 @@ function interact() {
   }
 }
 function eat() {
-  const inv = state.inventory;
-  if (inv.meat > 0) {
-    inv.meat--;
-    state.hunger = Math.min(100, state.hunger + 48);
-    state.health = Math.min(100, state.health + 8);
-    notice("Stekt kött · +48 mättnad");
-  } else if (inv.berries > 0) {
-    inv.berries--;
-    state.hunger = Math.min(100, state.hunger + 16);
-    state.thirst = Math.min(100, state.thirst + 5);
-    notice("Bär · +16 mättnad");
-  } else notice("Plocka bär eller jaga och stek kött vid en eld.");
+  const slot = state.inventory[HOTBAR_START + state.hotSlot];
+  if (!slot || !["berries", "meat"].includes(slot.id)) {
+    notice("Lägg bär eller stekt kött i hotbaren och högerklicka för att äta.");
+    return;
+  }
+  const meat = slot.id === "meat";
+  removeItems(state.inventory, slot.id, 1);
+  state.hunger = Math.min(100, state.hunger + (meat ? 48 : 16));
+  state.health = Math.min(100, state.health + (meat ? 8 : 0));
+  if (!meat) state.thirst = Math.min(100, state.thirst + 5);
+  notice(meat ? "Stekt kött · +48 mättnad" : "Bär · +16 mättnad");
+  updateEquipped();
+  renderHotbar();
   save();
 }
 function renderStorage() {
-  $("storageRows").innerHTML = Object.entries(resourceNames)
-    .map(
-      ([key, name]) =>
-        `<div class="storage-row"><span>${name}</span><button data-transfer="deposit" data-key="${key}" ${state.inventory[key] ? "" : "disabled"}>Packning ${state.inventory[key]} →</button><button data-transfer="take" data-key="${key}" ${openChest.inventory[key] ? "" : "disabled"}>← Kista ${openChest.inventory[key]}</button></div>`,
-    )
-    .join("");
+  const ids = [
+    ...new Set([
+      ...[...state.inventory, ...openChest.inventory]
+        .filter(Boolean)
+        .map((s) => s.id),
+      ...Object.keys(openChest.overflow || {}),
+    ]),
+  ];
+  $("storageRows").innerHTML =
+    ids
+      .map(
+        (id) =>
+          `<div class="storage-row"><span>${itemName(id)}</span><button data-transfer="deposit" data-key="${id}" ${exactCount(state.inventory, id) ? "" : "disabled"}>Packning ${exactCount(state.inventory, id)} →</button><button data-transfer="take" data-key="${id}" ${exactCount(openChest.inventory, id) + (openChest.overflow?.[id] || 0) ? "" : "disabled"}>← Kista ${exactCount(openChest.inventory, id) + (openChest.overflow?.[id] || 0)}</button></div>`,
+      )
+      .join("") || "<p>Kistan och packningen är tomma.</p>";
 }
 $("storageRows").onclick = (e) => {
   const b = e.target.closest("[data-transfer]");
@@ -903,9 +1022,23 @@ $("storageRows").onclick = (e) => {
       b.dataset.transfer === "deposit" ? state.inventory : openChest.inventory,
     to =
       b.dataset.transfer === "deposit" ? openChest.inventory : state.inventory,
-    key = b.dataset.key;
-  to[key] += from[key];
-  from[key] = 0;
+    id = b.dataset.key;
+  const withdrawing = b.dataset.transfer === "take";
+  const exact =
+    exactCount(from, id) + (withdrawing ? openChest.overflow[id] || 0 : 0);
+  let moved = 0;
+  while (moved < exact) {
+    const result = collect(to, { [id]: 1 });
+    if (!result.ok) break;
+    if (withdrawing && exactCount(from, id) === 0) {
+      openChest.overflow[id]--;
+      if (!openChest.overflow[id]) delete openChest.overflow[id];
+    } else removeItems(from, id, 1, true);
+    moved++;
+  }
+  if (moved < exact) notice("Ingen mer plats. Resten ligger kvar.");
+  updateEquipped();
+  renderHotbar();
   renderStorage();
   save();
 };
@@ -929,18 +1062,15 @@ function use() {
       notice("Här finns redan ett sådant bygge.");
       return;
     }
-    const status = makeItem(
-      state.inventory,
-      state.tools,
-      blueprint,
-      nearbyStations(),
-    );
-    if (!status.ok) {
-      notice(status.reason);
+    const placed = blueprint;
+    if (!removeItems(state.inventory, placed, 1)) {
+      notice("Tillverka byggdelen först.");
       return;
     }
-    addBuilding(blueprint, x, y, z, rotation);
-    notice(`${items[blueprint].name} byggd.`);
+    addBuilding(placed, x, y, z, rotation);
+    notice(`${items[placed].name} byggd.`);
+    updateEquipped();
+    renderHotbar();
     hitUntil = performance.now() + 300;
     save();
     return;
@@ -964,11 +1094,14 @@ function use() {
     swing = 1;
     hitUntil = performance.now() + 450;
     if (a.hp <= 0) {
+      if (!receive({ rawMeat: a.kind === "deer" ? 3 : 2 })) {
+        a.hp = 1;
+        notice("Inventariet är fullt — frigör plats för jaktbytet.");
+        return;
+      }
       scene.remove(a.group);
-      state.inventory.rawMeat += a.kind === "deer" ? 3 : 2;
-      state.inventory.fiber += 2;
       state.kills++;
-      notice("Jaktbyte · rått kött och fiber. Stek köttet vid en eld.");
+      notice("Jaktbyte · rått kött. Stek köttet vid en eld.");
       save();
     } else notice(a.kind === "wolf" ? "Vargen är skadad." : "Hjorten flyr!");
     return;
@@ -1115,7 +1248,7 @@ function blocked(x, z, animal = false) {
   }
   for (const r of resources)
     if (r.alive && !r.pickup && ["wood", "stone", "ore"].includes(r.kind)) {
-      const radius = r.kind === "wood" ? 0.55 : 1.1;
+      const radius = r.collisionRadius || (r.kind === "wood" ? 0.55 : 1.1);
       if (Math.hypot(x - r.group.position.x, z - r.group.position.z) < radius)
         return true;
     }
@@ -1141,10 +1274,7 @@ function simulate(dt, t) {
       keys.has("KeyS") ||
       keys.has("KeyA") ||
       keys.has("KeyD"),
-    sprint =
-      moving &&
-      (keys.has("ShiftLeft") || keys.has("ShiftRight")) &&
-      state.stamina > 3;
+    sprint = moving && keys.has("KeyR") && state.stamina > 3;
   state.stamina = THREE.MathUtils.clamp(
     state.stamina + (sprint ? -18 : 12) * dt,
     0,
@@ -1273,15 +1403,7 @@ function simulate(dt, t) {
     if (!r.alive && r.respawnAt <= state.elapsed) {
       r.alive = true;
       r.group.visible = true;
-      r.hp = r.pickup
-        ? 1
-        : r.kind === "wood"
-          ? 6
-          : r.kind === "stone"
-            ? 5
-            : r.kind === "ore"
-              ? 7
-              : 2;
+      r.hp = r.maxHp;
       renderer.shadowMap.needsUpdate = true;
     }
   saveTimer += dt;
@@ -1295,23 +1417,6 @@ function renderHUD() {
     $(key + "Text").textContent = Math.ceil(state[key]);
     $(key + "Bar").style.width = `${state[key]}%`;
   }
-  $("inventory").innerHTML = [
-    "wood",
-    "stone",
-    "fiber",
-    "berries",
-    "ore",
-    "metal",
-    "meat",
-  ]
-    .filter(
-      (k) => state.inventory[k] > 0 || ["wood", "stone", "fiber"].includes(k),
-    )
-    .map(
-      (k) =>
-        `<span><b>${state.inventory[k]}</b> ${resourceNames[k].toUpperCase()}</span>`,
-    )
-    .join("");
   const minutes = Math.floor(state.time * 1440);
   $("clock").textContent =
     `DAG ${state.day} · ${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
@@ -1332,7 +1437,7 @@ function renderHUD() {
     [
       "axe",
       "De första verktygen.",
-      "Plocka grenar, småsten och fiber. Tillverka en stenyxa [C].",
+      "Plocka grenar, småsten och löv. Tillverka en stenyxa [E].",
       state.tools.includes("axe"),
     ],
     [
@@ -1364,7 +1469,7 @@ function renderHUD() {
       "furnace",
       "Tämj elden.",
       "Bygg en smältugn nära arbetsbänken. Smält malm till järn.",
-      state.inventory.metal > 0 || state.tools.includes("ironAxe"),
+      count(state.inventory, "metal") > 0 || state.tools.includes("ironAxe"),
     ],
     [
       "ironAxe",
