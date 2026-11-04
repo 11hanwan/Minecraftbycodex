@@ -152,20 +152,20 @@ export function gatherRule(kind, tool = "hands", variant) {
     variants[kind === "wood" ? "pine" : kind === "stone" ? "limestone" : "ore"];
   if (kind === "wood")
     return {
-      allowed: tool === "axe" || tool === "ironAxe",
-      damage: tool === "ironAxe" ? 5 : 2,
-      amount: definition.amount,
+      allowed: tool === "stone" || tool === "axe" || tool === "ironAxe",
+      damage: tool === "stone" ? 1 : tool === "ironAxe" ? 5 : 2,
+      amount: tool === "stone" ? Math.max(1,Math.floor(definition.amount*.2)) : definition.amount,
       drop: definition.drop,
       reason:
-        "Du behöver en yxa. Plocka grenar, småsten och löv från marken för att tillverka en.",
+        "Använd flinta eller en yxa. Plocka flinta från marken med F.",
     };
   if (kind === "stone" || kind === "ore")
     return {
-      allowed: tool === "pickaxe",
-      damage: 2,
-      amount: definition.amount,
+      allowed: tool === "pickaxe" || (tool === "stone" && kind === "stone"),
+      damage: tool === "stone" ? 1 : 2,
+      amount: tool === "stone" ? Math.max(1,Math.floor(definition.amount*.2)) : definition.amount,
       drop: definition.drop,
-      reason: "Du behöver en hacka. Småsten på marken kan plockas för hand.",
+      reason: "Använd flinta eller en hacka för sten. Järnmalm kräver en hacka.",
     };
   return {
     allowed: true,

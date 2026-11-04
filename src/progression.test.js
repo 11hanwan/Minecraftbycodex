@@ -163,3 +163,4 @@ test("tree and rock varieties have higher, distinct durability and drops", () =>
       gatherRule("wood", "axe", "oak").damage,
   );
 });
+test('picked-up flint works on trees and rocks slowly with low yield, but not ore',()=>{for(const [kind,variant,better]of[['wood','oak','axe'],['stone','granite','pickaxe']]){const flint=gatherRule(kind,'stone',variant),tool=gatherRule(kind,better,variant);assert.equal(flint.allowed,true);assert.equal(flint.damage,1);assert.ok(flint.amount>0&&flint.amount<tool.amount);assert.ok(flint.damage<tool.damage);}assert.equal(gatherRule('ore','stone','ore').allowed,false);assert.equal(gatherRule('wood','hands','oak').allowed,false);});

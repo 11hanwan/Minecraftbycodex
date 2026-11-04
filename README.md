@@ -23,7 +23,7 @@ Tillverkade verktyg och byggdelar är riktiga föremål som tar plats. De läggs
 
 ## Från strand till läger
 
-1. Plocka **grenar, småsten och löv** med F. Öppna E och tillverka första stenyxan (4 trä, 3 sten, 2 löv). Du kan **inte** skada eller få något från stående träd med händerna, spjut eller hacka.
+1. Plocka **grenar, flinta och löv** med F. Öppna E och tillverka första stenyxan (4 trä, 3 sten, 2 löv). Du kan **inte** skada eller få något från stående träd med händerna, spjut eller hacka.
 2. Hugg med yxan och bryt med hackan. Trä av alla sorter kan användas som trä i recept, och sten av alla sorter räknas som sten. Sorterna skiljer sig i utseende, hållbarhet och mängd material:
 
 | Resurs   | Hållbarhet | Dropp vid förstöring |
@@ -62,3 +62,9 @@ npm run dev
 ## Publicering
 
 `.github/workflows/pages.yml` testar, bygger och publicerar `main` automatiskt med GitHub Actions. Under **Settings → Pages → Source** ska **GitHub Actions** vara valt. En publicerad webbversion behöver ingen backend, inga hemligheter och inga externa runtime-anrop. Relativa resurssökvägar i `vite.config.js` gör att spelet fungerar under projektets GitHub Pages-sökväg.
+
+## Flinta och fristående HTML
+
+Marksten heter nu flinta. Välj flintastapeln i hotbaren för att bearbeta träd och sten med vänsterklick: 1 skada per slag och cirka 20 procent av normalt utbyte (avrundat nedåt, minst 1). Händer ger fortfarande ingenting från stående träd. Flinta kan inte bryta järnmalm. En riktig yxa/hacka är snabbare och ger mer material.
+
+`npm run standalone` bygger en enda HTML-fil med inbäddad JavaScript och CSS i `artifacts/Vildmark.html`. Öppna den direkt i en WebGL-kompatibel Chrome utan server eller nätverk. Lokal sparning kan bero på webbläsarens inställningar för lokala filer.

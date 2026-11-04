@@ -6,7 +6,7 @@ export const resourceNames = {
   pineWood: "Tallträ",
   birchWood: "Björkträ",
   oakWood: "Ekträ",
-  stone: "Småsten",
+  stone: "Flinta",
   limestone: "Kalksten",
   granite: "Granit",
   basalt: "Basalt",

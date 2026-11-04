@@ -159,6 +159,10 @@ function handModel() {
     );
     arm.rotation.x = -0.7;
     mesh(new THREE.SphereGeometry(0.105, 8, 6), skin, 0.31, -0.19, -0.52, hand);
+  } else if(selected==='stone'){
+    mesh(new THREE.SphereGeometry(.08,8,6),skin,.31,-.33,-.45,hand);
+    const flint=mesh(new THREE.DodecahedronGeometry(.14,0),mats.rock,.3,-.23,-.48,hand);
+    flint.scale.set(.8,1.35,.55);
   } else if (["axe", "ironAxe", "pickaxe", "spear"].includes(selected)) {
     const handle = mesh(
       new THREE.CylinderGeometry(
@@ -1437,7 +1441,7 @@ function renderHUD() {
     [
       "axe",
       "De första verktygen.",
-      "Plocka grenar, småsten och löv. Tillverka en stenyxa [E].",
+      "Plocka grenar, flinta och löv. Tillverka en stenyxa [E].",
       state.tools.includes("axe"),
     ],
     [
